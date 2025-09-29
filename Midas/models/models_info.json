@@ -1,0 +1,15 @@
+{
+  "midas_v21_small": {
+    "downloaded": true,
+    "config": {
+      "url": "https://github.com/AlexeyAB/MiDaS/releases/download/midas_dpt/midas_v21_small-70d6b9c8.pt",
+      "size": "100MB",
+      "description": "Lower quality, fastest inference",
+      "input_size": [
+        256,
+        256
+      ],
+      "sha256": "70d6b9c8"
+    }
+  }
+}
