@@ -61,19 +61,6 @@ class BlindSpotMonitor:
             print("\n" + "="*70)
             print("ERROR: Failed to load model files!")
             print("="*70)
-            print(f"\nOpenCV Error: {str(e)}")
-            print("\nThis error typically means:")
-            print("1. The prototxt and caffemodel don't match (different versions)")
-            print("2. The caffemodel is corrupted")
-            print("3. The files are incomplete")
-            print("\nRECOMMENDED FIX:")
-            print("Delete both files and re-download them together:")
-            print("\ncd Model")
-            print("rm deploy.prototxt MobileNetSSD_deploy.caffemodel")
-            print("curl -L -o deploy.prototxt https://raw.githubusercontent.com/chuanqi305/MobileNet-SSD/master/deploy.prototxt")
-            print("curl -L -o MobileNetSSD_deploy.caffemodel https://github.com/chuanqi305/MobileNet-SSD/raw/master/mobilenet_iter_73000.caffemodel")
-            print("cd ..")
-            print("\n" + "="*70)
             raise
         
         self.classes = ["background", "aeroplane", "bicycle", "bird", "boat",
@@ -82,104 +69,226 @@ class BlindSpotMonitor:
                        "sofa", "train", "tvmonitor"]
         
         self.vehicle_classes = ["car", "bus", "motorbike", "bicycle"]
+        
+        # Cache for car edge position (so we don't recalculate for each frame)
+        self.car_edge_x = None
     
-    def detect_lane_markings(self, image):
-        """Detect lane markings using edge detection and Hough transform"""
-        h, w = image.shape[:2]
+    def detect_car_edge(self, image, debug=False):
+        """
+        Detects the edge of your own car in the blind spot camera image.
+        Returns the x-coordinate of the car edge.
+        """
+        height, width = image.shape[:2]
         
-        # Convert to grayscale
+        # Convert to different color spaces for analysis
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         
-        # Apply Gaussian blur
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        
-        # Edge detection
-        edges = cv2.Canny(blurred, 50, 150)
-        
-        # Define region of interest (bottom half of image for lane detection)
-        mask = np.zeros_like(edges)
-        roi_vertices = np.array([[(0, h), (0, h//2), (w, h//2), (w, h)]], dtype=np.int32)
-        cv2.fillPoly(mask, roi_vertices, 255)
-        masked_edges = cv2.bitwise_and(edges, mask)
-        
-        # Detect lines using Hough transform
-        lines = cv2.HoughLinesP(masked_edges, 1, np.pi/180, 50, 
-                                minLineLength=50, maxLineGap=150)
-        
-        if lines is None:
-            print("No lane markings detected, using default zone")
-            return None
-        
-        # Filter lines based on angle (looking for nearly vertical or angled lines)
-        lane_lines = []
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            
-            # Calculate angle
-            if x2 - x1 == 0:
-                angle = 90
-            else:
-                angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
-            
-            # Filter for lane-like angles (30-90 degrees for left, -90 to -30 for right)
-            if self.side == 'left' and 30 <= abs(angle) <= 90:
-                lane_lines.append((x1, y1, x2, y2, angle))
-            elif self.side == 'right' and 30 <= abs(angle) <= 90:
-                lane_lines.append((x1, y1, x2, y2, angle))
-        
-        if not lane_lines:
-            print("No suitable lane markings found, using default zone")
-            return None
-        
-        # Find the most relevant lane marking based on side
+        # Define search region based on camera side
         if self.side == 'left':
-            # For left side, find leftmost lane marking
-            relevant_line = min(lane_lines, key=lambda l: min(l[0], l[2]))
+            # Left camera - car is on right side
+            search_start = int(width * 0.50)
+            search_end = int(width * 0.95)
         else:
-            # For right side, find rightmost lane marking
-            relevant_line = max(lane_lines, key=lambda l: max(l[0], l[2]))
+            # Right camera - car is on left side
+            search_start = int(width * 0.05)
+            search_end = int(width * 0.50)
         
-        x1, y1, x2, y2 = relevant_line[:4]
+        print(f"Detecting car edge from {search_start} to {search_end} pixels...")
         
-        # Find the topmost y-coordinate of the lane marking
-        top_y = min(y1, y2)
+        # Method 1: Edge Detection - Find vertical structures (window frame/mirror)
+        edges = cv2.Canny(gray, 50, 150)
         
-        print(f"Lane marking detected at top_y={top_y}")
-        return top_y
+        # Look for strong vertical edges
+        vertical_kernel = np.ones((15, 1), np.uint8)
+        vertical_edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, vertical_kernel)
         
-    def draw_detection_zone(self, img, lane_top_y=None):
+        # Count vertical edge strength for each column
+        vertical_scores = []
+        for x in range(search_start, search_end):
+            column = vertical_edges[:, x]
+            score = np.sum(column > 0)
+            vertical_scores.append(score)
+        
+        vertical_scores = np.array(vertical_scores)
+        
+        # Smooth scores
+        if len(vertical_scores) > 20:
+            kernel_size = min(20, len(vertical_scores) // 5)
+            kernel = np.ones(kernel_size) / kernel_size
+            smoothed_scores = np.convolve(vertical_scores, kernel, mode='same')
+        else:
+            smoothed_scores = vertical_scores
+        
+        # Method 2: Brightness discontinuity
+        brightness = np.mean(gray, axis=0)
+        brightness_gradient = np.abs(np.gradient(brightness))
+        
+        if len(brightness_gradient) > 30:
+            brightness_gradient = np.convolve(brightness_gradient, np.ones(30)/30, mode='same')
+        
+        # Method 3: Texture analysis
+        texture_scores = []
+        window_size = 20
+        
+        for x in range(search_start, search_end):
+            if x < window_size or x > width - window_size:
+                texture_scores.append(0)
+                continue
+            
+            patch = gray[:, max(0, x-window_size):min(width, x+window_size)]
+            texture = np.std(patch)
+            texture_scores.append(texture)
+        
+        texture_scores = np.array(texture_scores)
+        texture_gradient = np.abs(np.gradient(texture_scores))
+        
+        if len(texture_gradient) > 20:
+            texture_gradient = np.convolve(texture_gradient, np.ones(20)/20, mode='same')
+        
+        # Normalize and combine scores
+        def normalize(arr):
+            if len(arr) == 0:
+                return arr
+            arr_min = np.min(arr)
+            arr_max = np.max(arr)
+            if arr_max - arr_min == 0:
+                return np.zeros_like(arr)
+            return (arr - arr_min) / (arr_max - arr_min)
+        
+        norm_vertical = normalize(smoothed_scores)
+        norm_brightness = normalize(brightness_gradient[search_start:search_end])
+        norm_texture = normalize(texture_gradient)
+        
+        # Combined score with weights
+        combined_score = (norm_vertical * 2.0 +
+                         norm_brightness * 1.5 +
+                         norm_texture * 1.0)
+        
+        # Find peaks in combined score
+        car_edge_x = None
+        
+        if len(combined_score) > 0:
+            threshold = np.mean(combined_score) + np.std(combined_score) * 0.8
+            peaks = np.where(combined_score > threshold)[0]
+            
+            if len(peaks) > 0:
+                # For left camera: take first (leftmost) strong peak
+                # For right camera: take last (rightmost) strong peak
+                if self.side == 'left':
+                    best_peak = peaks[0]
+                else:
+                    best_peak = peaks[-1]
+                
+                car_edge_x = search_start + best_peak
+                confidence = combined_score[best_peak] / np.max(combined_score) * 100
+                print(f"✓ Car edge detected at x={car_edge_x} ({car_edge_x/width*100:.1f}%) with {confidence:.1f}% confidence")
+            
+            # If no strong peak found, use maximum score position
+            if car_edge_x is None:
+                best_peak = np.argmax(combined_score)
+                car_edge_x = search_start + best_peak
+                print(f"Using maximum score position at x={car_edge_x} ({car_edge_x/width*100:.1f}%)")
+        
+        # Fallback with side-aware default
+        if car_edge_x is None:
+            if self.side == 'left':
+                car_edge_x = int(width * 0.65)
+            else:
+                car_edge_x = int(width * 0.35)
+            print(f"⚠ Using default position: {car_edge_x} ({car_edge_x/width*100:.1f}%)")
+        
+        return car_edge_x
+    
+    def get_blindspot_zone(self, image_width, image_height, image=None):
+        """
+        Dynamically detect the blind spot zone based on car edge detection.
+        Returns: (x_min, y_min, x_max, y_max) of the zone
+        """
+        # If car edge not yet detected and image provided, detect it
+        if self.car_edge_x is None and image is not None:
+            self.car_edge_x = self.detect_car_edge(image)
+        
+        # If still None (no image provided), use default
+        if self.car_edge_x is None:
+            if self.side == 'left':
+                self.car_edge_x = int(image_width * 0.65)
+            else:
+                self.car_edge_x = int(image_width * 0.35)
+            print(f"Using default car edge: {self.car_edge_x}")
+        
+        # Define zone based on camera side and detected car edge
+        if self.side == 'left':
+            # Left camera: blind spot is from left edge to car edge
+            return (0, 0, self.car_edge_x, image_height)
+        else:
+            # Right camera: blind spot is from car edge to right edge
+            return (self.car_edge_x, 0, image_width, image_height)
+    
+    def is_vehicle_in_zone(self, vehicle_box, zone):
+        """
+        Check if vehicle center point is within the blind spot zone
+        """
+        x_min, y_min, x_max, y_max = vehicle_box
+        zone_x_min, zone_y_min, zone_x_max, zone_y_max = zone
+        
+        # Calculate vehicle center
+        center_x = (x_min + x_max) // 2
+        center_y = (y_min + y_max) // 2
+        
+        # Check if center is within zone boundaries
+        return (zone_x_min <= center_x <= zone_x_max and 
+                zone_y_min <= center_y <= zone_y_max)
+    
+    def draw_detection_zone(self, img, zone, car_edge_x):
+        """Draw the dynamically detected blind spot zone"""
         h, w = img.shape[:2]
         overlay = img.copy()
         
-        zone_color = (255, 255, 0)
+        zone_color = (255, 255, 0)  # Yellow
+        x_min, y_min, x_max, y_max = zone
         
-        # If lane marking detected, draw zone above it
-        if lane_top_y is not None:
-            # Zone from top of image to lane marking
-            if self.side == 'left':
-                cv2.rectangle(overlay, (10, 10), (w//2, lane_top_y), zone_color, 3)
-            else:
-                cv2.rectangle(overlay, (w//2, 10), (w-10, lane_top_y), zone_color, 3)
+        # Draw zone rectangle
+        padding = 10
+        cv2.rectangle(overlay, 
+                     (x_min + padding, y_min + padding), 
+                     (x_max - padding, y_max - padding), 
+                     zone_color, 3)
+        
+        # Draw car edge line in green
+        cv2.line(overlay, (car_edge_x, 0), (car_edge_x, h), (0, 255, 0), 4)
+        
+        # Add labels with background
+        def draw_label(text, pos, color=zone_color):
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.8
+            thickness = 2
+            (tw, th), _ = cv2.getTextSize(text, font, font_scale, thickness)
+            x, y = pos
             
-            # Draw lane marking indicator
-            cv2.line(overlay, (10 if self.side == 'left' else w//2, lane_top_y), 
-                    (w//2 if self.side == 'left' else w-10, lane_top_y), 
-                    (0, 255, 0), 2)
-            cv2.putText(overlay, "LANE", 
-                       (20 if self.side == 'left' else w-100, lane_top_y - 10),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            # Background
+            cv2.rectangle(overlay, (x-5, y-th-5), (x+tw+5, y+5), (0, 0, 0), -1)
+            # Text
+            cv2.putText(overlay, text, (x, y), font, font_scale, color, thickness)
+        
+        # Labels based on side
+        percentage = f"{car_edge_x/w*100:.1f}%"
+        
+        if self.side == 'left':
+            draw_label(f"LEFT BLIND SPOT ZONE", (20, 40))
+            draw_label(f"Car Edge at {percentage}", (car_edge_x + 10, 40), (0, 255, 0))
+            draw_label("YOUR CAR", (car_edge_x + 10, h - 30), (255, 255, 255))
         else:
-            # Default zone (full area)
-            cv2.rectangle(overlay, (10, 10), (w-10, h-10), zone_color, 3)
+            draw_label("YOUR CAR", (20, 40), (255, 255, 255))
+            draw_label(f"Car Edge at {percentage}", (max(10, car_edge_x - 200), 40), (0, 255, 0))
+            draw_label(f"RIGHT BLIND SPOT ZONE", (car_edge_x + 10, 40))
         
-        label = f"{self.side.upper()} BLIND SPOT MONITOR"
-        cv2.putText(overlay, label, (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, zone_color, 2)
-        
+        # Blend overlay
         cv2.addWeighted(overlay, 0.6, img, 0.4, 0, img)
         return img
     
-    def detect_vehicles(self, image, lane_top_y=None):
+    def detect_vehicles(self, image, zone):
+        """Detect vehicles and filter only those in the blind spot zone"""
         h, w = image.shape[:2]
         
         blob = cv2.dnn.blobFromImage(
@@ -205,27 +314,18 @@ class BlindSpotMonitor:
                     box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
                     x_min, y_min, x_max, y_max = box.astype(int)
                     
-                    # Check if vehicle is in blind spot zone (above lane marking)
-                    if lane_top_y is not None:
-                        # Vehicle center point
-                        center_y = (y_min + y_max) // 2
-                        
-                        # Only consider vehicles above the lane marking
-                        if center_y > lane_top_y:
-                            continue
-                        
-                        # Check if vehicle is on correct side
+                    # Only include vehicles IN the blind spot zone
+                    if self.is_vehicle_in_zone((x_min, y_min, x_max, y_max), zone):
+                        vehicles.append({
+                            'class': class_name,
+                            'confidence': confidence,
+                            'box': (x_min, y_min, x_max, y_max)
+                        })
                         center_x = (x_min + x_max) // 2
-                        if self.side == 'left' and center_x > w//2:
-                            continue
-                        if self.side == 'right' and center_x < w//2:
-                            continue
-                    
-                    vehicles.append({
-                        'class': class_name,
-                        'confidence': confidence,
-                        'box': (x_min, y_min, x_max, y_max)
-                    })
+                        print(f"  ✓ {class_name} IN zone at x={center_x}")
+                    else:
+                        center_x = (x_min + x_max) // 2
+                        print(f"  ✗ {class_name} OUTSIDE zone at x={center_x} - IGNORED")
         
         return vehicles
     
@@ -234,27 +334,35 @@ class BlindSpotMonitor:
         if image is None:
             raise ValueError(f"Could not load image from {image_path}")
         
+        h, w = image.shape[:2]
         result_img = image.copy()
         
-        # Detect lane markings
-        print("Detecting lane markings...")
-        lane_top_y = self.detect_lane_markings(image)
+        # Detect car edge first (only once per image)
+        self.car_edge_x = self.detect_car_edge(image)
         
-        # Draw detection zone based on lane marking
-        result_img = self.draw_detection_zone(result_img, lane_top_y)
+        # Get blind spot zone based on detected car edge
+        zone = self.get_blindspot_zone(w, h, image)
         
+        print(f"\nBlind spot zone: x={zone[0]}-{zone[2]}, y={zone[1]}-{zone[3]}")
+        print(f"Car edge at: {self.car_edge_x} ({self.car_edge_x/w*100:.1f}%)")
         print(f"Scanning {self.side} blind spot...")
-        vehicles = self.detect_vehicles(image, lane_top_y)
+        
+        # Draw detection zone with car edge line
+        result_img = self.draw_detection_zone(result_img, zone, self.car_edge_x)
+        
+        # Detect vehicles in the zone
+        vehicles = self.detect_vehicles(image, zone)
         
         alert = len(vehicles) > 0
-        print(f"Found {len(vehicles)} vehicle(s) in {self.side} blind spot")
+        print(f"\nFound {len(vehicles)} vehicle(s) IN {self.side} blind spot zone")
         
+        # Draw detected vehicles
         for vehicle in vehicles:
             x_min, y_min, x_max, y_max = vehicle['box']
             label = vehicle['class']
             confidence = vehicle['confidence']
             
-            color = (0, 0, 255)
+            color = (0, 0, 255)  # Red for vehicles in blind spot
             
             cv2.rectangle(result_img, (x_min, y_min), (x_max, y_max), color, 3)
             text = f"{label}: {confidence:.2f}"
@@ -265,13 +373,13 @@ class BlindSpotMonitor:
             cv2.putText(result_img, text, (x_min, y_min - 5),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
             
-            print(f"  WARNING: {label.upper()} detected (confidence: {confidence:.2f})")
+            print(f"  ⚠ WARNING: {label.upper()} detected (confidence: {confidence:.2f})")
         
+        # Add alert banner if vehicles detected
         if alert:
-            h, w = result_img.shape[:2]
-            cv2.putText(result_img, "VEHICLE DETECTED", 
-                       (w//2 - 200, h - 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+            cv2.putText(result_img, "VEHICLE DETECTED IN BLIND SPOT", 
+                       (w//2 - 250, h - 30),
+                       cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
         
         # Save to results folder
         if output_path is None:
@@ -280,7 +388,11 @@ class BlindSpotMonitor:
             output_path = f'results/{output_path}'
         
         cv2.imwrite(output_path, result_img)
-        print(f"✓ Processed image saved to {output_path}")
+        print(f"\n✓ Processed image saved to {output_path}")
+        
+        # Reset car edge for next image (if processing multiple images)
+        # Comment this line if processing video frames
+        # self.car_edge_x = None
         
         return alert, len(vehicles)
 
@@ -290,8 +402,8 @@ if __name__ == "__main__":
         side = sys.argv[1]
         image_path = sys.argv[2]
     else:
-        side = 'right'
-        image_path = '../Pictures/right.jpeg'
+        side = 'left'
+        image_path = '../Pictures/Testing.jpeg'
     
     try:
         monitor = BlindSpotMonitor(side=side)
@@ -299,12 +411,13 @@ if __name__ == "__main__":
         output_name = f'output_{side}.jpg'
         alert, vehicle_count = monitor.process(image_path, output_name)
         
-        print(f"\n{'='*50}")
+        print(f"\n{'='*60}")
         print(f"{side.upper()} BLIND SPOT DETECTION SUMMARY:")
-        print(f"{'='*50}")
-        print(f"Alert Status: {'WARNING' if alert else 'CLEAR'}")
+        print(f"{'='*60}")
+        print(f"Alert Status: {'⚠ WARNING' if alert else '✓ CLEAR'}")
         print(f"Vehicles Detected: {vehicle_count}")
-        print(f"{'='*50}\n")
+        print(f"Car Edge Position: {monitor.car_edge_x} pixels")
+        print(f"{'='*60}\n")
         
         sys.exit(1 if alert else 0)
         
