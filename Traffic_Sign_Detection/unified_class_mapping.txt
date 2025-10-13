@@ -1,0 +1,81 @@
+UNIFIED CLASS MAPPING
+==================================================
+
+gtsrb_0 → speed_limit_20
+gtsrb_1 → speed_limit_30
+gtsrb_10 → no_passing_trucks
+gtsrb_11 → right_of_way
+gtsrb_12 → priority_road
+gtsrb_13 → yield
+gtsrb_14 → stop
+gtsrb_15 → no_vehicles
+gtsrb_16 → no_trucks
+gtsrb_17 → no_entry
+gtsrb_18 → general_caution
+gtsrb_19 → dangerous_curve_left
+gtsrb_2 → speed_limit_50
+gtsrb_20 → dangerous_curve_right
+gtsrb_21 → double_curve
+gtsrb_22 → bumpy_road
+gtsrb_23 → slippery_road
+gtsrb_24 → road_narrows_right
+gtsrb_25 → road_work
+gtsrb_26 → traffic_signals
+gtsrb_27 → pedestrians_crossing
+gtsrb_28 → children_crossing
+gtsrb_29 → bicycles_crossing
+gtsrb_3 → speed_limit_60
+gtsrb_30 → ice_snow
+gtsrb_31 → wild_animals
+gtsrb_32 → end_all_restrictions
+gtsrb_33 → turn_right_ahead
+gtsrb_34 → turn_left_ahead
+gtsrb_35 → ahead_only
+gtsrb_36 → go_straight_or_right
+gtsrb_37 → go_straight_or_left
+gtsrb_38 → keep_right
+gtsrb_39 → keep_left
+gtsrb_4 → speed_limit_70
+gtsrb_40 → roundabout
+gtsrb_41 → end_no_passing
+gtsrb_42 → end_no_passing_trucks
+gtsrb_5 → speed_limit_80
+gtsrb_6 → end_speed_limit_80
+gtsrb_7 → speed_limit_100
+gtsrb_8 → speed_limit_120
+gtsrb_9 → no_passing
+pakistani_Bridge Ahead → bridge_ahead
+pakistani_Cross Roads → crossroads
+pakistani_Give Way → yield
+pakistani_Left bend → curve_left
+pakistani_No Horns → no_horns
+pakistani_No Mobile Allowed → no_mobile_allowed
+pakistani_No Overtaking → no_passing
+pakistani_No Parking → no_parking
+pakistani_No U-Turn → no_u_turn
+pakistani_No left turn → no_left_turn
+pakistani_No right turn → no_right_turn
+pakistani_Parking → parking
+pakistani_Pedestrians → pedestrians_crossing
+pakistani_Railway Crossing → railroad_crossing
+pakistani_Right bend → curve_right
+pakistani_Road Divides → road_divides
+pakistani_Roundabout Ahead → roundabout
+pakistani_Sharp Right Turn → sharp_right_turn
+pakistani_Slow → slow
+pakistani_Speed Breaker Ahead → bumpy_road
+pakistani_Speed Limit (20 kmph) → speed_limit_20
+pakistani_Speed Limit (25 kmph) → speed_limit_25
+pakistani_Speed Limit (30 kmph) → speed_limit_30
+pakistani_Speed Limit (40 kmph) → speed_limit_40
+pakistani_Speed Limit (45 kmph) → speed_limit_45
+pakistani_Speed Limit (50 kmph) → speed_limit_50
+pakistani_Speed Limit (60 kmph) → speed_limit_60
+pakistani_Speed Limit (65 kmph) → speed_limit_65
+pakistani_Speed Limit (70 kmph) → speed_limit_70
+pakistani_Speed Limit (80 kmph) → speed_limit_80
+pakistani_Steep Descent → steep_descent
+pakistani_Stop 1 → stop
+pakistani_Stop 2 → stop
+pakistani_U-Turn → u_turn
+pakistani_Zigzag Road Ahead → double_curve

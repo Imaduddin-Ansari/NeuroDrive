@@ -1,0 +1,84 @@
+RAW DISCOVERED CLASSES
+==================================================
+
+GTSRB CLASSES:
+  0
+  1
+  10
+  11
+  12
+  13
+  14
+  15
+  16
+  17
+  18
+  19
+  2
+  20
+  21
+  22
+  23
+  24
+  25
+  26
+  27
+  28
+  29
+  3
+  30
+  31
+  32
+  33
+  34
+  35
+  36
+  37
+  38
+  39
+  4
+  40
+  41
+  42
+  5
+  6
+  7
+  8
+  9
+
+PAKISTANI CLASSES:
+  Bridge Ahead
+  Cross Roads
+  Give Way
+  Left bend
+  No Horns
+  No Mobile Allowed
+  No Overtaking
+  No Parking
+  No U-Turn
+  No left turn
+  No right turn
+  Parking
+  Pedestrians
+  Railway Crossing
+  Right bend
+  Road Divides
+  Roundabout Ahead
+  Sharp Right Turn
+  Slow
+  Speed Breaker Ahead
+  Speed Limit (20 kmph)
+  Speed Limit (25 kmph)
+  Speed Limit (30 kmph)
+  Speed Limit (40 kmph)
+  Speed Limit (45 kmph)
+  Speed Limit (50 kmph)
+  Speed Limit (60 kmph)
+  Speed Limit (65 kmph)
+  Speed Limit (70 kmph)
+  Speed Limit (80 kmph)
+  Steep Descent
+  Stop 1
+  Stop 2
+  U-Turn
+  Zigzag Road Ahead
