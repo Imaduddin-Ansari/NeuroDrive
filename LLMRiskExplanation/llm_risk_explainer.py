@@ -56,9 +56,10 @@ class LLMRiskExplainer:
         base_url:    str   = "http://localhost:11434",
         model:       str   = "llama3.2",
         cooldown:    float = 8.0,
-        timeout:     float = 3.5,
+        timeout:     float = 8.0,
         tts_enabled: bool  = True,
         log_enabled: bool  = True,
+        alert_streak_required: int = 3,
     ):
         self._cooldown  = cooldown
         self._last_call = 0.0
@@ -103,13 +104,19 @@ class LLMRiskExplainer:
           • the module is not running
           • cooldown has not elapsed since the last call
           • the snapshot does not meet any trigger condition
+
+        The 3-consecutive-alert gate lives in main_window._submit_risk_snapshot,
+        so by the time submit() is called the condition is already verified.
+        Overtake verdicts are submitted directly from _handle_overtake_result
+        and bypass the gate entirely.
         """
         if not self._running:
             return
+        if not snapshot.should_trigger():
+            return
+
         now = time.time()
         if now - self._last_call < self._cooldown:
-            return
-        if not snapshot.should_trigger():
             return
 
         # Evict any stale snapshot still waiting; keep only the newest

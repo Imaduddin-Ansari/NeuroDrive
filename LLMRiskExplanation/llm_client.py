@@ -29,11 +29,11 @@ class LLMClient:
     must not touch any Tkinter widgets.
     """
 
-    # Tokens to generate.  80 is enough for two sentences;
+    # Tokens to generate.  60 is enough for two sentences;
     # staying low keeps latency under ~2 s on a 3 B model.
-    MAX_TOKENS   = 80
+    MAX_TOKENS   = 60
     TEMPERATURE  = 0.25   # low = deterministic, action-focused
-    STOP_TOKENS  = ["\n\n", "###"]
+    STOP_TOKENS  = ["\n\n", "###", "\n3.", "\n4."]   # stop after 2 sentences
 
     def __init__(
         self,

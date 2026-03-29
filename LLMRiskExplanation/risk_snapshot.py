@@ -9,6 +9,7 @@ Three trigger rules (any one fires the LLM):
   1. Two or more modules are alerting at the same time.
   2. Driver is distracted AND at least one hazard exists on the road.
   3. A critical-priority traffic rule is active AND speed > 30 km/h.
+  4. (NEW) An overtake assessment has just completed (any verdict).
 
 The snapshot also builds the prompt that is sent to Llama.
 """
@@ -56,6 +57,18 @@ class RiskSnapshot:
     # ── Vehicle context ───────────────────────────────────────────────────────
     ego_speed_kmh: float = 0.0
 
+    # ── Overtake Assistance (NEW) ─────────────────────────────────────────────
+    overtake_requested:         bool            = False
+    overtake_side:              Optional[str]   = None   # 'left' | 'right'
+    overtake_verdict:           Optional[str]   = None   # 'safe' | 'caution' | 'unsafe'
+    overtake_reason:            Optional[str]   = None
+    overtake_blindspot_clear:   bool            = True
+    overtake_front_clear:       bool            = True
+    overtake_front_dist_m:      Optional[float] = None
+    overtake_gap_seconds:       Optional[float] = None
+    overtake_approaching_rear:  bool            = False
+    overtake_notes:             list = field(default_factory=list)
+
     # ─────────────────────────────────────────────────────────────────────────
 
     def _road_hazard_count(self) -> int:
@@ -80,18 +93,24 @@ class RiskSnapshot:
         """
         Return True when the snapshot is worth sending to the LLM.
 
-        Rule 1 — multi-alert: 2+ modules alerting simultaneously.
-        Rule 2 — distracted + hazard: driver is not watching and there
-                  is at least one road hazard to miss.
-        Rule 3 — critical rule + speed: a critical traffic rule fires
+        Rule 1 — multi-alert: 3+ distinct modules alerting simultaneously.
+                  This is intentionally strict — 2 alerts are handled by
+                  the consecutive-gate in main_window before submit() is
+                  even called, so this guards against snapshot-level spurious
+                  triggers (e.g. a single module that counts as 2 alerts).
+        Rule 2 — distracted + TWO hazards: driver is not watching and there
+                  are at least two independent road hazards present, making
+                  the combined risk genuinely high.
+        Rule 3 — critical rule + speed: a critical-priority traffic rule fires
                   while the vehicle is moving faster than 30 km/h.
+        Rule 4 — overtake verdict just arrived (any verdict).
         """
-        # Rule 1
-        if self.active_alert_count() >= 2:
+        # Rule 1 — require 3 distinct alert sources
+        if self.active_alert_count() >= 3:
             return True
 
-        # Rule 2
-        if self.driver_distracted and self._road_hazard_count() >= 1:
+        # Rule 2 — distracted driver + at least 2 independent road hazards
+        if self.driver_distracted and self._road_hazard_count() >= 2:
             return True
 
         # Rule 3
@@ -100,6 +119,10 @@ class RiskSnapshot:
             if r.get("priority") == "critical"
         ]
         if critical_rules and self.ego_speed_kmh > 30:
+            return True
+
+        # Rule 4 — overtake assessment
+        if self.overtake_requested and self.overtake_verdict is not None:
             return True
 
         return False
@@ -115,8 +138,9 @@ class RiskSnapshot:
         lines: list[str] = []
         lines.append(
             "You are a driving co-pilot. Describe the current risk in "
-            "1-2 plain sentences and tell the driver exactly what to do. "
-            "Be specific. Do not restate sensor names or repeat facts "
+            "exactly 1-2 sentences and tell the driver exactly what to do. "
+            "Be specific and direct. Never use more than 2 sentences. "
+            "Do not restate sensor names or repeat facts "
             "already obvious to a driver. Do not use bullet points.\n"
         )
         lines.append("Current driving situation:")
@@ -171,9 +195,40 @@ class RiskSnapshot:
             else:
                 lines.append("- Driver is distracted")
 
+        # ── Overtake Assessment (NEW) ─────────────────────────────────────────
+        if self.overtake_requested and self.overtake_verdict is not None:
+            side_txt = self.overtake_side or "unknown"
+            lines.append(
+                f"- Driver requested overtake to the {side_txt}. "
+                f"Assessment: {self.overtake_verdict.upper()}"
+            )
+            if not self.overtake_blindspot_clear:
+                lines.append(
+                    f"  • Blind spot ({side_txt}) is OCCUPIED"
+                )
+            else:
+                lines.append(f"  • Blind spot ({side_txt}): clear")
+
+            if not self.overtake_front_clear:
+                dist_txt = (f"{self.overtake_front_dist_m:.0f} m"
+                            if self.overtake_front_dist_m else "unknown distance")
+                gap_txt  = (f", {self.overtake_gap_seconds:.1f} s gap"
+                            if self.overtake_gap_seconds else "")
+                lines.append(
+                    f"  • Vehicle in target lane {dist_txt} ahead{gap_txt}"
+                )
+            else:
+                lines.append("  • Target lane ahead: clear")
+
+            if self.overtake_approaching_rear:
+                lines.append("  • Vehicle approaching rapidly from behind")
+
+            if self.overtake_reason:
+                lines.append(f"  • Summary: {self.overtake_reason}")
+
         # Speed context — only include if it adds meaning
         if self.ego_speed_kmh > 0:
             lines.append(f"- Vehicle speed: {self.ego_speed_kmh:.0f} km/h")
 
-        lines.append("\nResponse (1-2 sentences, action-oriented):")
+        lines.append("\nResponse (max 2 sentences, action-oriented, no lists):")
         return "\n".join(lines)

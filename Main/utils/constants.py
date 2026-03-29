@@ -157,11 +157,11 @@ LLM_RISK_CONFIG = {
 
     # Minimum seconds between consecutive LLM calls.
     # Keeps the model from being hammered during sustained alerts.
-    'cooldown': 8.0,
+    'cooldown': 12.0,
 
     # HTTP timeout per request (seconds).
-    # A 3 B model on CPU typically responds in 1–2 s.
-    'timeout':  3.5,
+    # A 3 B model on CPU typically responds in 1–5 s; 8 s gives headroom.
+    'timeout':  8.0,
 
     # Speak explanations aloud via pyttsx3
     'tts_enabled': True,

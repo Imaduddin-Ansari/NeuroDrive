@@ -79,15 +79,31 @@ class BlindSpotProcessor(BaseProcessor):
             return
 
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        print(f"[BlindSpot] Started — {self.side} side")
+        video_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        # Cap the display+detection loop at 15 fps.
+        # The side cameras don't need more than 15fps; running flat-out
+        # wastes a full CPU core per camera on a MacBook M-series chip.
+        TARGET_FPS = 15.0
+        target_interval = 1.0 / TARGET_FPS
+        # Run depth/YOLO inference on every Nth frame to save CPU.
+        # At 15 fps display, inferring every 3rd frame = 5 Hz detection —
+        # fast enough for a vehicle closing at highway speed.
+        DETECT_EVERY = 3
+        frame_idx = 0
+        last_frame_t = time.time()
+        print(f"[BlindSpot] Started — {self.side} side (display {TARGET_FPS:.0f}fps, detect every {DETECT_EVERY} frames)")
 
         while self.is_running and cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                last_frame_t = time.time()
                 continue
 
-            if self.detection_enabled and self.monitor is not None:
+            frame_idx += 1
+            run_detection = (frame_idx % DETECT_EVERY == 0)
+
+            if self.detection_enabled and self.monitor is not None and run_detection:
                 try:
                     processed_frame, vehicles = self.monitor.process_frame(frame, draw_overlay=False)
                 except Exception:
@@ -110,12 +126,20 @@ class BlindSpotProcessor(BaseProcessor):
                 else:
                     self.vehicle_distance = None
             else:
-                self.detection_status = False
-                self.vehicle_count    = 0
-                self.vehicle_distance = None
-                processed_frame       = frame
+                if not (self.detection_enabled and self.monitor is not None):
+                    self.detection_status = False
+                    self.vehicle_count    = 0
+                    self.vehicle_distance = None
+                processed_frame = frame
 
             self._put_frame(processed_frame)
+
+            # Pace to TARGET_FPS — sleep for remaining time in this frame slot.
+            elapsed = time.time() - last_frame_t
+            sleep_t = target_interval - elapsed
+            if sleep_t > 0.001:
+                time.sleep(sleep_t)
+            last_frame_t = time.time()
 
         cap.release()
         print(f"[BlindSpot] Stopped — {self.side} side")

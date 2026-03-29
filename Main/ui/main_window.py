@@ -12,6 +12,8 @@ Performance notes
 • Front-camera alerts are only shown for the currently-active segment.
 • LLM explanations are polled every tick; the explainer worker runs in its
   own daemon thread and never blocks the UI.
+• Overtake Assistance button lives on the top bar; side is picked via the
+  existing indicator buttons.
 """
 
 import tkinter as tk
@@ -38,9 +40,11 @@ from processors.traffic_sign_processor import TrafficSignProcessor
 from processors.blindspot_processor import BlindSpotProcessor
 from processors.priority_rules_processor import PriorityRulesProcessor
 from processors.driver_distraction_processor import DriverDistractionProcessor
+from processors.overtake_processor import OvertakeProcessor
 
 # LLM Risk Explanation module
 from LLMRiskExplanation import LLMRiskExplainer, RiskSnapshot
+from LLMRiskExplanation.tts_speaker import TTSSpeaker
 
 from ui.loading_screen import LoadingScreen
 from ui.settings_window import SettingsWindow
@@ -49,13 +53,16 @@ from ui.components.video_feed import VideoFeedGrid
 from ui.components.alert_panel import AlertPanel
 from ui.calibration_overlay import CalibrationOverlay, NeuroDrivePopup
 
+# Overtake module
+from OvertakeAssistance import OvertakeState, OvertakeSide
+
 
 class NeuroDriveUI:
     """Main UI window — single-tick update loop for smooth multi-feed display."""
 
     # ── Timing ────────────────────────────────────────────────────────────────
-    _TICK_MS         = 16    # ~60 fps tick — always shows the NEWEST queued frame
-    _INDICATOR_EVERY = 10    # update indicators every N ticks (~6 Hz at 60fps)
+    _TICK_MS         = 50    # 20 fps — imperceptible on dashcam UI, saves ~67% PIL CPU
+    _INDICATOR_EVERY = 6     # update indicators every N ticks (~2.4 Hz at 20fps)
     _CALIB_POLL_MS   = 100
 
     def __init__(self, root):
@@ -77,8 +84,15 @@ class NeuroDriveUI:
         self.priority_rules_processor = None
         self.driver_processor         = None
 
+        # ── Overtake Processor ────────────────────────────────────────────────
+        self.overtake_processor = OvertakeProcessor()
+
+        # ── Fallback TTS for overtake verdicts when LLM explainer is disabled ──
+        # Only used when LLM-Based Risk Explanation is off in settings.
+        self._overtake_fallback_speaker: TTSSpeaker = None
+
         # ── LLM Risk Explainer ────────────────────────────────────────────────
-        self.llm_explainer: LLMRiskExplainer = None   # initialised in _start_all_modules
+        self.llm_explainer: LLMRiskExplainer = None
 
         # ── Front-camera cycling ──────────────────────────────────────────────
         self._cycle_order    = FRONT_CAMERA_CONFIG['cycle_order']
@@ -114,7 +128,18 @@ class NeuroDriveUI:
         # ── Startup errors ────────────────────────────────────────────────────
         self._startup_errors = []
 
-        # ── Boot: show loading then start driver gate ─────────────────────────
+        # ── Overtake state mirror (for UI feedback) ───────────────────────────
+        self._last_overtake_state = OvertakeState.IDLE
+
+        # ── LLM consecutive-alert gate ────────────────────────────────────────
+        # The LLM is only submitted when the same alert condition has been
+        # active for at least this many consecutive indicator ticks (~6 Hz),
+        # i.e. roughly 3 × (1/6 Hz) ≈ 0.5 s of sustained alerting.
+        # Overtake verdicts bypass this gate entirely (handled separately).
+        self._llm_required_consecutive = 3
+        self._llm_consecutive_alerts   = 0   # ticks where active_alert_count >= 2
+
+        # ── Boot ──────────────────────────────────────────────────────────────
         self.loading_screen = LoadingScreen(self.root)
         self.loading_screen.show()
         self.root.after(500, self._start_driver_and_gate)
@@ -149,7 +174,7 @@ class NeuroDriveUI:
         else:
             self.loading_screen.update_message(
                 "No driver profile found.\n"
-                "Please complete the calibration wizard shown in the calibration window…"
+                "Please complete the calibration wizard…"
             )
             calib = CalibrationOverlay(
                 self.root,
@@ -178,6 +203,7 @@ class NeuroDriveUI:
             self.main_frame,
             self.show_settings,
             indicator_callback=self._on_indicator_change,
+            overtake_callback=self._on_overtake_button,   # NEW
         )
         self.top_bar.pack(fill='x', side='top')
 
@@ -191,7 +217,6 @@ class NeuroDriveUI:
         self._start_all_modules()
         self._start_tick()
 
-        # Show any startup warnings after a short delay
         self.root.after(600, self._show_startup_errors)
 
     def _show_startup_errors(self):
@@ -208,9 +233,111 @@ class NeuroDriveUI:
             )
             self._startup_errors.clear()
 
+    # ── Indicator change: also feeds overtake side selection ─────────────────
+
     def _on_indicator_change(self, left_active, right_active):
+        # Lane departure
         if self.lane_processor and self.lane_processor.is_running:
             self.lane_processor.set_indicators(left=left_active, right=right_active)
+
+        # Overtake side selection — only when processor is WAITING
+        ot_state = self.overtake_processor.state
+        if ot_state == OvertakeState.WAITING:
+            if left_active:
+                self.overtake_processor.set_side(OvertakeSide.LEFT)
+            elif right_active:
+                self.overtake_processor.set_side(OvertakeSide.RIGHT)
+
+    # ── Overtake button ───────────────────────────────────────────────────────
+
+    def _on_overtake_button(self):
+        self.overtake_processor.request_overtake()
+        # Immediately reflect new state on button
+        self._sync_overtake_ui()
+
+    def _sync_overtake_ui(self):
+        """Push current overtake state to the top bar button."""
+        if not self.top_bar:
+            return
+        state = self.overtake_processor.state
+        result = self.overtake_processor.latest_result
+
+        state_str = state.value  # 'idle', 'waiting', 'checking', 'safe', 'caution', 'unsafe'
+
+        sub = ""
+        if state == OvertakeState.WAITING:
+            sub = "Press ◀L or R▶ to choose side"
+        elif state == OvertakeState.CHECKING:
+            side = self.overtake_processor.active_side
+            sub  = f"Analysing {side.value} side…" if side else "Analysing…"
+        elif result is not None:
+            side_txt = result.side.value.upper() if result.side else ""
+            if state == OvertakeState.SAFE:
+                sub = f"{side_txt} — path clear"
+            elif state == OvertakeState.CAUTION:
+                sub = f"{side_txt} — proceed carefully"
+            elif state == OvertakeState.UNSAFE:
+                sub = f"{side_txt} — DO NOT overtake"
+
+        self.top_bar.update_overtake_status(state_str, sub)
+
+    # ── Overtake result callback (fires from background thread) ──────────────
+
+    def _on_overtake_result(self, result):
+        """Called by OvertakeProcessor when analysis completes."""
+        # All UI ops must be scheduled on the main thread
+        self.root.after(0, self._handle_overtake_result, result)
+
+    def _handle_overtake_result(self, result):
+        """Main-thread handler — updates UI, speaks verdict, fires LLM."""
+        self._sync_overtake_ui()
+
+        side_txt = result.side.value if result.side else "unknown side"
+        side_upper = side_txt.upper()
+
+        # Post to alert panel
+        if self.alert_panel:
+            verdict  = result.state.value.upper()
+            emoji    = ("✅" if result.state == OvertakeState.SAFE else
+                        "⚠️" if result.state == OvertakeState.CAUTION else "🚫")
+            msg_tag  = ("low" if result.state == OvertakeState.SAFE else
+                        "high" if result.state == OvertakeState.CAUTION else "critical")
+            self.alert_panel._append_line(
+                f"{emoji} OVERTAKE ({side_upper}): {verdict} — {result.reason}",
+                msg_tag
+            )
+
+        # ── Single unified voice for overtake verdict ─────────────────────────
+        # If LLM explainer is active, submit to it — it generates and speaks a
+        # single explanation. Nothing else speaks, preventing double-audio.
+        # If LLM is disabled, a short pre-written message is spoken instead.
+        if self.llm_explainer:
+            snap = self._build_base_snapshot(time.time())
+            snap.overtake_requested        = True
+            snap.overtake_side             = result.side.value if result.side else None
+            snap.overtake_verdict          = result.state.value
+            snap.overtake_reason           = result.reason
+            snap.overtake_blindspot_clear  = result.blindspot_clear
+            snap.overtake_front_clear      = result.front_clear
+            snap.overtake_front_dist_m     = result.front_vehicle_dist_m
+            snap.overtake_gap_seconds      = result.safe_gap_seconds
+            snap.overtake_approaching_rear = result.approaching_from_behind
+            snap.overtake_notes            = result.notes
+            self.llm_explainer.submit(snap)
+            print(f"[Overtake] Verdict submitted to LLM — LLM will speak.")
+        else:
+            # LLM disabled — speak a concise pre-written verdict directly.
+            if result.state == OvertakeState.SAFE:
+                tts_msg = f"The {side_txt} side is clear. You may overtake."
+            elif result.state == OvertakeState.CAUTION:
+                tts_msg = f"Caution on the {side_txt} side. Wait for a larger gap."
+            else:
+                tts_msg = f"Do not overtake on the {side_txt}. The lane is not clear."
+            print(f"[OvertakeTTS] {tts_msg}")
+            if self._overtake_fallback_speaker is None:
+                self._overtake_fallback_speaker = TTSSpeaker(enabled=True)
+            self._overtake_fallback_speaker.speak(tts_msg)
+
 
     # ══════════════════════════════════════════════════════════════════════════
     # Module startup
@@ -331,8 +458,46 @@ class NeuroDriveUI:
         else:
             print("— LLM Risk Explainer disabled in config")
 
+        # ── Wire Overtake Processor ───────────────────────────────────────────
+        ot_on = cfg.get("Overtake Assistance", True)
+        if ot_on:
+            self.overtake_processor.attach_processors(
+                left_bsp        = self.left_bsp_processor,
+                right_bsp       = self.right_bsp_processor,
+                fcw             = self.fcw_processor,
+                get_front_frame_fn = self._get_latest_front_frame,
+                ego_kmph_fn     = self._get_ego_speed,
+            )
+            self.overtake_processor.on_result_ready = self._on_overtake_result
+            # Inject YOLO from FCW processor if available
+            if self.fcw_processor and self.fcw_processor.yolo:
+                self.overtake_processor.inject_yolo(self.fcw_processor.yolo)
+            print("✓ Overtake Assistance wired")
+        else:
+            print("— Overtake Assistance disabled in config")
+
+    # ── Helpers for overtake processor ───────────────────────────────────────
+
+    def _get_latest_front_frame(self):
+        """Return the most recent front-camera frame (BGR ndarray) or None."""
+        seg = self._cycle_order[self._cycle_index]
+        frame = None
+        if seg == 'fcw' and self.fcw_processor:
+            frame = self.fcw_processor.get_processed_frame()
+        elif seg == 'traffic_sign' and self.traffic_sign_processor:
+            frame = self.traffic_sign_processor.get_processed_frame()
+        # Fallback: try all front processors
+        if frame is None and self.fcw_processor:
+            frame = self.fcw_processor.get_processed_frame()
+        return frame
+
+    def _get_ego_speed(self) -> float:
+        if self.fcw_processor and hasattr(self.fcw_processor, 'ego_kmph'):
+            return self.fcw_processor.ego_kmph
+        return FCW_CONFIG.get('ego_kmph', 50.0)
+
     # ══════════════════════════════════════════════════════════════════════════
-    # Unified tick loop — one call handles ALL four feeds + indicator updates
+    # Unified tick loop
     # ══════════════════════════════════════════════════════════════════════════
 
     def _start_tick(self):
@@ -341,7 +506,6 @@ class NeuroDriveUI:
 
     @staticmethod
     def _drain_latest(processor):
-        """Drain ALL frames in the queue, return only the newest one."""
         import queue as _q
         latest = None
         while True:
@@ -399,80 +563,71 @@ class NeuroDriveUI:
             if f is not None:
                 self.video_grid.update_feed(FEED_DRIVER_CAMERA, f)
 
-        # ── Poll LLM explainer for new explanations (every tick, non-blocking) ─
+        # ── Poll LLM explainer ────────────────────────────────────────────────
         if self.llm_explainer and self.alert_panel:
             explanation = self.llm_explainer.poll()
             if explanation:
                 self.alert_panel.add_llm_explanation(explanation, now)
 
+        # ── Tick the overtake processor (timeout / expiry) ────────────────────
+        new_ot_state = self.overtake_processor.tick()
+        if new_ot_state != self._last_overtake_state:
+            self._last_overtake_state = new_ot_state
+            self._sync_overtake_ui()
+
+        # Update ego speed reference in overtake processor
+        self.overtake_processor.update_ego_speed()
+
         # ── Indicators & alerts (every _INDICATOR_EVERY ticks) ────────────────
         if self._tick_count % self._INDICATOR_EVERY == 0:
             self._update_indicators(segment, now)
-            # Build and submit a risk snapshot to the LLM every indicator cycle
             if self.llm_explainer:
                 self._submit_risk_snapshot(now)
 
-        # ── Schedule next tick ────────────────────────────────────────────────
         self._tick_id = self.root.after(self._TICK_MS, self._tick)
 
     # ══════════════════════════════════════════════════════════════════════════
     # LLM snapshot builder
     # ══════════════════════════════════════════════════════════════════════════
 
-    def _submit_risk_snapshot(self, now: float) -> None:
-        """
-        Collect the latest state from every processor, pack it into a
-        RiskSnapshot, and offer it to the LLM explainer.
-
-        The explainer's cooldown + trigger logic means this is cheap to
-        call every ~160 ms — most calls are silently dropped.
-        """
+    def _build_base_snapshot(self, now: float) -> RiskSnapshot:
+        """Build a snapshot with all non-overtake fields populated."""
         snap = RiskSnapshot(timestamp=now)
 
-        # FCW
         if self.fcw_processor and self.fcw_processor.running:
             snap.fcw_critical = self.fcw_processor.critical
             snap.ego_speed_kmh = self.fcw_processor.ego_kmph
-            # Expose depth/TTC if the processor stores them
             if hasattr(self.fcw_processor, 'last_depth_m'):
                 snap.fcw_depth_m = self.fcw_processor.last_depth_m
             if hasattr(self.fcw_processor, 'last_ttc_s'):
                 snap.fcw_ttc_s = self.fcw_processor.last_ttc_s
 
-        # Blind spots
         if self.left_bsp_processor and self.left_bsp_processor.is_running:
             snap.left_bsp      = self.left_bsp_processor.detection_status
             snap.bsp_distance_m = self.left_bsp_processor.vehicle_distance
         if self.right_bsp_processor and self.right_bsp_processor.is_running:
             snap.right_bsp = self.right_bsp_processor.detection_status
-            # Use shorter of the two distances if both sides have vehicles
             if self.right_bsp_processor.vehicle_distance is not None:
                 if snap.bsp_distance_m is None:
                     snap.bsp_distance_m = self.right_bsp_processor.vehicle_distance
                 else:
-                    snap.bsp_distance_m = min(
-                        snap.bsp_distance_m,
-                        self.right_bsp_processor.vehicle_distance,
-                    )
+                    snap.bsp_distance_m = min(snap.bsp_distance_m,
+                                              self.right_bsp_processor.vehicle_distance)
 
-        # Lane departure
         if self.lane_processor and self.lane_processor.is_running:
             snap.lane_warning    = self.lane_processor.deviation_warning
             snap.lane_direction  = self.lane_processor.direction
             snap.lane_position_m = self.lane_processor.position
 
-        # Traffic sign
-        if (self.traffic_sign_processor
-                and self.traffic_sign_processor.is_running
-                and self.traffic_sign_processor.detection_status):
+        if (self.traffic_sign_processor and
+                self.traffic_sign_processor.is_running and
+                self.traffic_sign_processor.detection_status):
             snap.sign_class      = self.traffic_sign_processor.current_sign
             snap.sign_confidence = self.traffic_sign_processor.sign_confidence
 
-        # Priority rules
         if self.priority_rules_processor and self.priority_rules_processor.is_running:
             snap.active_rules = self.priority_rules_processor.active_rules
 
-        # Driver distraction
         if self.driver_processor and self.driver_processor.is_running:
             snap.driver_distracted = self.driver_processor.distracted
             snap.driver_alerts     = self.driver_processor.alerts
@@ -481,7 +636,35 @@ class NeuroDriveUI:
             if hasattr(self.driver_processor, 'yaw_status'):
                 snap.yaw_status = self.driver_processor.yaw_status
 
-        self.llm_explainer.submit(snap)
+        return snap
+
+    def _submit_risk_snapshot(self, now: float) -> None:
+        """
+        Build a snapshot and submit it to the LLM only when ALL of:
+          • 3 or more distinct alert modules are active simultaneously, AND
+          • that condition has been sustained for at least
+            _llm_required_consecutive indicator ticks (~6 Hz ≈ 0.5 s).
+        Overtake verdicts bypass this gate entirely — handled in
+        _handle_overtake_result.
+        """
+        snap = self._build_base_snapshot(now)
+
+        # Require 3 distinct alert sources (not just 2) before starting
+        # the consecutive-tick counter.  This prevents a single module that
+        # happens to trigger two internal flags from firing the LLM alone.
+        alert_count = snap.active_alert_count()
+
+        if alert_count >= 3:
+            self._llm_consecutive_alerts += 1
+        else:
+            # Condition cleared or insufficient — reset so it must sustain again
+            self._llm_consecutive_alerts = 0
+
+        # Only submit once the 3-alert condition has been continuous for the
+        # required number of ticks.  The LLM's own cooldown prevents
+        # re-firing immediately after.
+        if self._llm_consecutive_alerts >= self._llm_required_consecutive:
+            self.llm_explainer.submit(snap)
 
     # ══════════════════════════════════════════════════════════════════════════
     # Indicator / alert updates  (called at ~6 Hz from _tick)
@@ -491,7 +674,6 @@ class NeuroDriveUI:
         if not self.top_bar:
             return
 
-        # ── FCW — only show alert when FCW segment is live ────────────────────
         fcw_on = self.config.get("Forward Collision Warning", True)
         if not fcw_on:
             self.top_bar.update_fcw_status(label_override="FCW: OFF")
@@ -500,7 +682,6 @@ class NeuroDriveUI:
         else:
             self.top_bar.update_fcw_status(offline=True)
 
-        # ── Lane — only show alert when lane segment is live ──────────────────
         lane_on = self.config.get("Lane Departure Warning", True)
         if not lane_on:
             self.top_bar.update_lane_status(label_override="LANE: OFF")
@@ -512,7 +693,6 @@ class NeuroDriveUI:
         else:
             self.top_bar.update_lane_status(offline=True)
 
-        # ── Traffic signs — only show when traffic_sign segment is live ───────
         ts_on = self.config.get("Traffic Sign Detection", True)
         if not ts_on:
             self.top_bar.update_traffic_signs([], current_time, label_override="SIGNS: OFF")
@@ -522,7 +702,6 @@ class NeuroDriveUI:
         else:
             self.top_bar.update_traffic_signs([], current_time)
 
-        # ── Blind spot — always active (side cameras run independently) ───────
         bsp_on = self.config.get("Blind Spot Monitoring", True)
         if not bsp_on:
             self.top_bar.update_blindspot_status(detected=False, label_override="BLIND: OFF")
@@ -543,7 +722,6 @@ class NeuroDriveUI:
             else:
                 self.top_bar.update_blindspot_status(detected=False)
 
-        # ── Priority rules — only when priority_rules segment is live ─────────
         rules_on = self.config.get("Priority-Based Rules Alert", True)
         if not rules_on:
             self.top_bar.update_priority_rules([], label_override="RULES: OFF")
@@ -557,7 +735,6 @@ class NeuroDriveUI:
         else:
             self.top_bar.update_priority_rules([])
 
-        # ── Driver distraction — always active ────────────────────────────────
         driver_on = self.config.get("Driver Distraction Detection", True)
         if hasattr(self.top_bar, 'update_driver_status'):
             if not driver_on:
@@ -570,7 +747,6 @@ class NeuroDriveUI:
                 )
 
     def _refresh_sign_history(self, current_time):
-        """Update traffic sign history from the processor (cheap, no UI writes)."""
         if (self.traffic_sign_processor and
                 self.traffic_sign_processor.is_running and
                 self.traffic_sign_processor.detection_status):
@@ -669,6 +845,18 @@ class NeuroDriveUI:
             return self.driver_processor.get_processed_frame()
         return None
 
+    def _get_latest_front_frame(self):
+        """Latest front frame for overtake analysis."""
+        seg = self._cycle_order[self._cycle_index]
+        frame = None
+        if seg == 'fcw' and self.fcw_processor:
+            frame = self.fcw_processor.get_processed_frame()
+        if frame is None and self.fcw_processor:
+            frame = self.fcw_processor.get_processed_frame()
+        if frame is None and self.traffic_sign_processor:
+            frame = self.traffic_sign_processor.get_processed_frame()
+        return frame
+
     # ══════════════════════════════════════════════════════════════════════════
     # Live settings apply
     # ══════════════════════════════════════════════════════════════════════════
@@ -687,16 +875,7 @@ class NeuroDriveUI:
         for proc, key in pairs:
             if proc is not None:
                 proc.detection_enabled = cfg.get(key, True)
-
-        # LLM toggle — we cannot hot-stop/start the explainer easily,
-        # so we gate submission instead by checking the config inside
-        # _submit_risk_snapshot.  The explainer thread stays alive but
-        # produces no output when the config key is False.
         print("[Settings] Applied live.")
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # Settings window / misc
-    # ══════════════════════════════════════════════════════════════════════════
 
     def show_settings(self):
         SettingsWindow(self.root, self.config,
@@ -721,12 +900,19 @@ class NeuroDriveUI:
                 pass
         self._tick_id = None
 
-        # Stop LLM explainer first (graceful — flushes log)
         if self.llm_explainer:
             try:
                 self.llm_explainer.stop()
             except Exception:
                 pass
+
+        if self._overtake_fallback_speaker is not None:
+            try:
+                self._overtake_fallback_speaker.stop()
+            except Exception:
+                pass
+
+        self.overtake_processor.stop()
 
         for proc in [
             self.left_bsp_processor, self.right_bsp_processor,

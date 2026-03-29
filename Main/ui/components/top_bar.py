@@ -1,15 +1,24 @@
-"""Top bar component — with label_override for OFF states"""
+"""Top bar component — with Overtake Assistance button + label_override for OFF states"""
 import tkinter as tk
 import time
 from utils.constants import COLORS, UI_DIMENSIONS
 
 _DIM = '#666666'   # greyed-out colour for disabled indicators
 
+# Overtake button — neutral idle, subtle state colours (no eye-searing brights)
+_OT_IDLE    = '#252525'   # same as bg_lighter — blends with indicator buttons
+_OT_WAIT    = '#3a3000'   # muted amber
+_OT_CHECK   = '#002040'   # muted blue
+_OT_SAFE    = '#1a3a1a'   # muted green (NOT neon)
+_OT_CAUTION = '#3a2800'   # muted orange
+_OT_UNSAFE  = '#3a0000'   # muted red
+
 
 class TopBar(tk.Frame):
-    """Top bar with status indicators, turn signals and settings button."""
+    """Top bar with status indicators, turn signals, overtake button and settings."""
 
-    def __init__(self, parent, settings_callback, indicator_callback=None):
+    def __init__(self, parent, settings_callback, indicator_callback=None,
+                 overtake_callback=None):
         super().__init__(
             parent,
             bg=COLORS['bg_light'],
@@ -18,6 +27,7 @@ class TopBar(tk.Frame):
         self.pack_propagate(False)
         self.settings_callback  = settings_callback
         self.indicator_callback = indicator_callback
+        self.overtake_callback  = overtake_callback   # NEW
         self._create_ui()
 
     def _create_ui(self):
@@ -112,9 +122,23 @@ class TopBar(tk.Frame):
                                      fg=COLORS['success'], bg=COLORS['bg_light'])
         self.driver_label.pack(side='left', padx=4)
 
+        # ──────────────────────────────────────────────────────────────────────
+        # RIGHT SIDE  (packed right-to-left: Settings | Indicators | Overtake)
+        # ──────────────────────────────────────────────────────────────────────
+
+        # ── Settings ──────────────────────────────────────────────────────────
+        tk.Button(
+            self, text="⚙ Settings",
+            font=("Helvetica", 12),
+            bg=COLORS['accent'], fg="#000000",
+            activebackground=COLORS['accent_dark'], activeforeground="#000000",
+            relief='flat', padx=18, pady=8, cursor="hand2",
+            command=self.settings_callback,
+        ).pack(side='right', padx=20, pady=10)
+
         # ── Turn indicators ───────────────────────────────────────────────────
         self.ind_frame = tk.Frame(self, bg=COLORS['bg_light'])
-        self.ind_frame.pack(side='right', padx=10)
+        self.ind_frame.pack(side='right', padx=4)
 
         self.left_ind_btn = tk.Button(
             self.ind_frame, text="◀ L",
@@ -139,17 +163,77 @@ class TopBar(tk.Frame):
         self.left_indicator_active  = False
         self.right_indicator_active = False
 
-        # ── Settings ──────────────────────────────────────────────────────────
-        tk.Button(
-            self, text="⚙ Settings",
-            font=("Helvetica", 12),
-            bg=COLORS['accent'], fg="#000000",
+        # ── Overtake Assistance button ────────────────────────────────────────
+        self._ot_state_label_text = tk.StringVar(value="⇉ OVERTAKE")
+        self.overtake_btn = tk.Button(
+            self,
+            textvariable=self._ot_state_label_text,
+            font=("Helvetica", 11, "bold"),
+            bg=COLORS['bg_lighter'], fg=COLORS['text_secondary'],
             activebackground=COLORS['accent_dark'], activeforeground="#000000",
-            relief='flat', padx=18, pady=8, cursor="hand2",
-            command=self.settings_callback,
-        ).pack(side='right', padx=20, pady=10)
+            relief='flat', padx=12, pady=6, cursor="hand2",
+            command=self._on_overtake_pressed,
+        )
+        self.overtake_btn.pack(side='right', padx=2, pady=10)
+
+        # Overtake status sub-label (shown below the button text)
+        self.overtake_sublabel = tk.Label(
+            self, text="",
+            font=("Helvetica", 9),
+            fg=COLORS['text_tertiary'], bg=COLORS['bg_light'],
+        )
+        # We DON'T pack it here — it appears dynamically when needed
 
     # ──────────────────────────────────────────────────────────────────────────
+    # Overtake button handler
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _on_overtake_pressed(self):
+        if callable(self.overtake_callback):
+            self.overtake_callback()
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Public: update overtake button appearance from main_window tick
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def update_overtake_status(self, state_str: str, sub: str = ""):
+        """
+        Parameters
+        ──────────
+        state_str : one of 'idle' | 'waiting' | 'checking' |
+                    'safe' | 'caution' | 'unsafe'
+        sub       : optional short sub-label (e.g. side name, verdict)
+        """
+        cfg = {
+            # state       label text               bg             fg (text)
+            'idle':     ("⇉ OVERTAKE",           COLORS['bg_lighter'], COLORS['text_secondary']),
+            'waiting':  ("⇉ PICK SIDE…",          _OT_WAIT,            COLORS['warning']),
+            'checking': ("⇉ CHECKING…",           _OT_CHECK,           '#7ec8e3'),
+            'safe':     ("⇉ SAFE TO GO",          _OT_SAFE,            COLORS['success']),
+            'caution':  ("⇉ CAUTION",             _OT_CAUTION,         COLORS['warning']),
+            'unsafe':   ("⇉ DO NOT OVERTAKE",     _OT_UNSAFE,          COLORS['error_light']),
+            'expired':  ("⇉ OVERTAKE",            COLORS['bg_lighter'], COLORS['text_secondary']),
+        }
+        txt, bg, fg = cfg.get(state_str, cfg['idle'])
+        self._ot_state_label_text.set(txt)
+        self.overtake_btn.config(bg=bg, fg=fg,
+                                 activebackground=bg,
+                                 activeforeground=fg)
+        # Sub-label (e.g. "LEFT — clear / UNSAFE: vehicle 8 m")
+        if sub:
+            self.overtake_sublabel.config(
+                text=sub,
+                fg=(COLORS['success'] if state_str == 'safe' else
+                    COLORS['warning'] if state_str == 'caution' else
+                    COLORS['error']   if state_str == 'unsafe'  else
+                    '#ffd700'         if state_str == 'waiting' else
+                    COLORS['text_tertiary']),
+            )
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Turn indicator toggle
+    # ──────────────────────────────────────────────────────────────────────────
+
     def _toggle_indicator(self, side):
         if side == 'left':
             self.left_indicator_active = not self.left_indicator_active
@@ -169,10 +253,11 @@ class TopBar(tk.Frame):
                 self.right_ind_btn.config(bg=COLORS['bg_lighter'], fg=COLORS['text_tertiary'])
 
         if self.indicator_callback:
-            self.indicator_callback(self.left_indicator_active, self.right_indicator_active)
+            self.indicator_callback(self.left_indicator_active,
+                                    self.right_indicator_active)
 
     # ──────────────────────────────────────────────────────────────────────────
-    # Public update methods — all accept optional label_override for OFF state
+    # Existing update methods (unchanged)
     # ──────────────────────────────────────────────────────────────────────────
 
     def update_fcw_status(self, critical=False, offline=False, label_override=None):
