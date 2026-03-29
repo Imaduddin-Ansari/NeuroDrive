@@ -10,3 +10,6 @@ __pycache__/
 
 # Videos
 *.mp4
+
+TrafficSignDetection/neurodrive
+TrafficSignDetection/Real_Data
