@@ -8,8 +8,16 @@ __pycache__/
 # Models
 *.pt
 
-# Videos
-*.mp4
 
-TrafficSignDetection/neurodrive
+
+# Virtual environments
+TrafficSignDetection/neurodrive/
+**/venv/
+**/.venv/
+**/env/
+
+# Videos (will be handled by LFS or excluded)
+*.mp4
+*.zip
+*.dat
 TrafficSignDetection/Real_Data
