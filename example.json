@@ -1,0 +1,42 @@
+{
+  "timestamp": "2025-10-31T14:23:45.123Z",
+  "obd_data": {
+    "speed_kmh": 65.5,
+    "acceleration_ms2": 0.8
+  },
+  "detections": {
+    "lane_departure": {
+      "detected": false
+    },
+    "blind_spot": {
+      "detected": true,
+      "side": "left",
+      "distance_m": 8.5
+    },
+    "traffic_sign": {
+      "detected": true,
+      "type": "speed_limit_60"
+    },
+    "driver_distraction": {
+      "detected": false,
+      "type": "Using Phone"
+    },
+    "overtake_unsafe": {
+      "detected": true,
+      "reason": "vehicle_in_blind_spot"
+    },
+    "weather_condition": {
+      "detected": true,
+      "type": "clear"
+    },
+    "priority_alert": {
+      "detected": false
+    },
+    "forward_collision": {
+      "detected": false
+    },
+    "pedestrian_crossing": {
+      "detected": false
+    }
+  }
+}

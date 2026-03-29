@@ -1,0 +1,942 @@
+{
+  "rule_mapping": {
+    "emergency_vehicle_detected": {
+      "rule_id": "EMG_001",
+      "priority": "critical",
+      "actions": [
+        "give_way",
+        "change_lane",
+        "slow_down"
+      ],
+      "description": "Give way to emergency vehicles with active sirens or flashing lights",
+      "conditions": [
+        "emergency_vehicle_approaching",
+        "siren_active OR lights_flashing",
+        "ambulance OR police OR fire_truck"
+      ],
+      "speed_requirements": {
+        "action": "reduce_speed_significantly",
+        "stop_if_necessary": true
+      },
+      "distance_requirements": {
+        "minimum_clearance": "pull_over_to_side",
+        "following_distance": "200_meters_minimum",
+        "do_not_follow_closely": true
+      }
+    },
+    "roundabout_sign_detected": {
+      "rule_id": "RND_001",
+      "priority": "high",
+      "actions": [
+        "yield",
+        "slow_down",
+        "proceed_with_caution"
+      ],
+      "description": "Vehicles already in the roundabout have right of way",
+      "conditions": [
+        "approaching_roundabout",
+        "yield_to_traffic_in_roundabout",
+        "safe_gap_available"
+      ],
+      "speed_requirements": {
+        "approach_speed": "20_to_30_kmh",
+        "circulating_speed": "maintain_steady_pace"
+      },
+      "distance_requirements": {
+        "yield_distance": "sufficient_to_stop_safely",
+        "entry_gap": "minimum_4_seconds"
+      }
+    },
+    "stop_sign_detected": {
+      "rule_id": "SIGN_001",
+      "priority": "critical",
+      "actions": [
+        "stop",
+        "yield"
+      ],
+      "description": "Come to complete stop, yield to all cross traffic",
+      "conditions": [
+        "must_stop_completely",
+        "wheels_must_stop_rotating",
+        "check_all_directions",
+        "yield_to_all_traffic"
+      ],
+      "speed_requirements": {
+        "final_speed": "0_kmh",
+        "stop_duration": "minimum_3_seconds_recommended"
+      },
+      "distance_requirements": {
+        "stop_position": "at_or_before_stop_line",
+        "if_no_line": "before_entering_intersection"
+      }
+    },
+    "yield_sign_detected": {
+      "rule_id": "SIGN_002",
+      "priority": "high",
+      "actions": [
+        "slow_down",
+        "yield",
+        "proceed_with_caution"
+      ],
+      "description": "Slow down and prepare to give way to traffic on priority road",
+      "conditions": [
+        "traffic_on_priority_road_has_right_of_way",
+        "proceed_only_when_safe"
+      ],
+      "speed_requirements": {
+        "approach_speed": "reduce_significantly",
+        "be_prepared_to_stop": true
+      },
+      "distance_requirements": {
+        "approach_distance": "reduce_speed_early",
+        "safe_gap": "minimum_5_seconds"
+      }
+    },
+    "pedestrian_crossing_detected": {
+      "rule_id": "PED_001",
+      "priority": "critical",
+      "actions": [
+        "stop",
+        "give_way",
+        "maintain_distance"
+      ],
+      "description": "Stop and give way to pedestrians at designated crossings",
+      "conditions": [
+        "pedestrian_on_crossing",
+        "pedestrian_waiting_to_cross",
+        "zebra_crossing_or_marked_crossing"
+      ],
+      "speed_requirements": {
+        "approach_speed": "reduce_to_30_40_kmh",
+        "stop_if_pedestrian_present": true
+      },
+      "distance_requirements": {
+        "stop_distance": "before_crossing_line",
+        "safety_margin": "5_meters_from_pedestrian"
+      }
+    },
+    "school_zone_sign_detected": {
+      "rule_id": "ZONE_001",
+      "priority": "high",
+      "actions": [
+        "slow_down",
+        "proceed_with_caution"
+      ],
+      "description": "Reduce speed significantly in school zones during active hours",
+      "conditions": [
+        "school_zone_sign_present",
+        "school_hours_may_be_active",
+        "children_may_be_present"
+      ],
+      "speed_requirements": {
+        "maximum_speed": "typically_25_40_kmh",
+        "posted_limit_varies_by_country": true
+      },
+      "distance_requirements": {
+        "increased_awareness_zone": "scan_for_children"
+      }
+    },
+    "red_traffic_light_detected": {
+      "rule_id": "LIGHT_001",
+      "priority": "critical",
+      "actions": [
+        "stop"
+      ],
+      "description": "Stop at red traffic light",
+      "conditions": [
+        "red_light_active",
+        "stop_at_stop_line_or_before_intersection"
+      ],
+      "speed_requirements": {
+        "final_speed": "0_kmh"
+      },
+      "distance_requirements": {
+        "stop_position": "at_stop_line"
+      }
+    },
+    "yellow_traffic_light_detected": {
+      "rule_id": "LIGHT_002",
+      "priority": "high",
+      "actions": [
+        "slow_down",
+        "proceed_with_caution"
+      ],
+      "description": "Prepare to stop, proceed only if too close to stop safely",
+      "conditions": [
+        "yellow_light_active",
+        "determine_point_of_no_return"
+      ],
+      "speed_requirements": {
+        "reduce_speed": "prepare_to_stop"
+      },
+      "distance_requirements": {
+        "evaluate_stopping_distance": "can_stop_safely_before_intersection"
+      }
+    },
+    "speed_limit_sign_detected": {
+      "rule_id": "SPEED_001",
+      "priority": "high",
+      "actions": [
+        "slow_down",
+        "informational"
+      ],
+      "description": "Adjust speed to posted limit and road conditions",
+      "conditions": [
+        "speed_limit_sign_detected",
+        "adjust_to_weather_and_traffic",
+        "enforce_maximum_speed"
+      ],
+      "speed_requirements": {
+        "maximum_speed": "as_posted",
+        "adjust_for_conditions": true
+      },
+      "distance_requirements": {
+        "stopping_distance": "adjust_for_speed",
+        "following_distance": "2_seconds_minimum_at_60kmh"
+      }
+    },
+    "multi_lane_highway_detected": {
+      "rule_id": "LANE_001",
+      "priority": "medium",
+      "actions": [
+        "keep_right",
+        "change_lane"
+      ],
+      "description": "Keep right/left except when overtaking, use passing lane appropriately",
+      "conditions": [
+        "slower_traffic_use_slow_lane",
+        "overtake_in_passing_lane_only",
+        "return_to_slow_lane_after_overtaking"
+      ],
+      "speed_requirements": {
+        "maintain_flow": true,
+        "do_not_obstruct_passing_lane": true
+      },
+      "distance_requirements": {
+        "lane_change_signal": "100_meters_before_change",
+        "safe_gap": "sufficient_space_both_lanes"
+      }
+    },
+    "no_overtaking_sign_detected": {
+      "rule_id": "SIGN_003",
+      "priority": "high",
+      "actions": [
+        "informational",
+        "maintain_distance"
+      ],
+      "description": "Do not overtake/pass vehicles in this zone",
+      "conditions": [
+        "no_overtaking_zone",
+        "dangerous_area_ahead",
+        "limited_visibility"
+      ],
+      "speed_requirements": {},
+      "distance_requirements": {
+        "maintain_lane": true,
+        "do_not_cross_center_line": true
+      }
+    },
+    "one_way_sign_detected": {
+      "rule_id": "SIGN_004",
+      "priority": "high",
+      "actions": [
+        "informational",
+        "proceed_with_caution"
+      ],
+      "description": "Traffic flows in one direction only on this street",
+      "conditions": [
+        "one_way_traffic_only",
+        "do_not_enter_from_wrong_direction"
+      ],
+      "speed_requirements": {},
+      "distance_requirements": {}
+    },
+    "do_not_enter_sign_detected": {
+      "rule_id": "SIGN_005",
+      "priority": "critical",
+      "actions": [
+        "no_entry",
+        "stop"
+      ],
+      "description": "Do not enter this road or area",
+      "conditions": [
+        "wrong_way_entry",
+        "one_way_street_from_wrong_direction",
+        "restricted_area"
+      ],
+      "speed_requirements": {
+        "do_not_proceed": true
+      },
+      "distance_requirements": {}
+    },
+    "priority_road_sign_detected": {
+      "rule_id": "SIGN_006",
+      "priority": "medium",
+      "actions": [
+        "informational",
+        "proceed_with_caution"
+      ],
+      "description": "You are on a priority road, side traffic must yield to you",
+      "conditions": [
+        "you_have_right_of_way",
+        "side_roads_must_yield",
+        "still_watch_for_violations"
+      ],
+      "speed_requirements": {
+        "maintain_appropriate_speed": true
+      },
+      "distance_requirements": {}
+    },
+    "cyclist_detected": {
+      "rule_id": "CYC_001",
+      "priority": "high",
+      "actions": [
+        "slow_down",
+        "maintain_distance",
+        "proceed_with_caution"
+      ],
+      "description": "Give cyclists safe space when passing, reduce speed",
+      "conditions": [
+        "cyclist_on_road_or_bike_lane",
+        "safe_passing_distance_required",
+        "expect_cyclist_movement"
+      ],
+      "speed_requirements": {
+        "reduce_speed_when_passing": true,
+        "be_prepared_to_stop": true
+      },
+      "distance_requirements": {
+        "passing_clearance": "1_to_2_meters",
+        "following_distance": "safe_distance_if_behind"
+      }
+    },
+    "heavy_vehicle_detected": {
+      "rule_id": "HV_001",
+      "priority": "medium",
+      "actions": [
+        "maintain_distance",
+        "proceed_with_caution"
+      ],
+      "description": "Maintain increased following distance from trucks and buses",
+      "conditions": [
+        "truck_or_bus_ahead",
+        "longer_stopping_distance",
+        "limited_visibility_behind_truck"
+      ],
+      "speed_requirements": {},
+      "distance_requirements": {
+        "following_distance": "4_to_6_seconds",
+        "avoid_blind_spots": true
+      }
+    },
+    "fog_detected": {
+      "rule_id": "WEATHER_001",
+      "priority": "high",
+      "actions": [
+        "slow_down",
+        "maintain_distance",
+        "proceed_with_caution"
+      ],
+      "description": "Reduce speed significantly, use fog lights, increase following distance",
+      "conditions": [
+        "visibility_reduced",
+        "fog_lights_on",
+        "low_beam_headlights_on",
+        "do_not_use_high_beams"
+      ],
+      "speed_requirements": {
+        "reduce_speed_significantly": true,
+        "adjust_to_visibility": "drive_at_speed_you_can_stop_within_sight"
+      },
+      "distance_requirements": {
+        "following_distance": "4_to_8_seconds",
+        "stop_within_visible_range": true
+      }
+    },
+    "rain_or_wet_road_detected": {
+      "rule_id": "WEATHER_002",
+      "priority": "high",
+      "actions": [
+        "slow_down",
+        "maintain_distance",
+        "proceed_with_caution"
+      ],
+      "description": "Reduce speed on wet roads, increase following distance, risk of hydroplaning",
+      "conditions": [
+        "wet_road_surface",
+        "reduced_traction",
+        "increased_braking_distance",
+        "risk_of_hydroplaning"
+      ],
+      "speed_requirements": {
+        "reduce_speed": "25_to_33_percent_reduction",
+        "below_80_kmh_to_reduce_hydroplaning": true
+      },
+      "distance_requirements": {
+        "following_distance": "4_to_6_seconds",
+        "braking_distance": "doubled_on_wet_roads"
+      }
+    },
+    "snow_or_ice_detected": {
+      "rule_id": "WEATHER_003",
+      "priority": "critical",
+      "actions": [
+        "slow_down",
+        "maintain_distance",
+        "proceed_with_caution"
+      ],
+      "description": "Extreme caution, significantly reduced speed, very gentle inputs",
+      "conditions": [
+        "ice_or_snow_on_road",
+        "severely_reduced_traction",
+        "stopping_distance_multiplied",
+        "gentle_steering_brake_acceleration"
+      ],
+      "speed_requirements": {
+        "reduce_speed": "50_to_75_percent_reduction",
+        "drive_at_appropriate_speed_for_conditions": true
+      },
+      "distance_requirements": {
+        "following_distance": "8_to_10_seconds",
+        "stopping_distance": "10x_normal_on_ice"
+      }
+    },
+    "railroad_crossing_detected": {
+      "rule_id": "RAIL_001",
+      "priority": "critical",
+      "actions": [
+        "stop",
+        "proceed_with_caution"
+      ],
+      "description": "Stop if signals active, never stop on tracks, watch for trains",
+      "conditions": [
+        "railroad_crossing_ahead",
+        "stop_if_signals_active",
+        "stop_if_gates_lowering",
+        "stop_if_train_visible"
+      ],
+      "speed_requirements": {
+        "approach_slowly": true,
+        "be_prepared_to_stop": true
+      },
+      "distance_requirements": {
+        "stop_distance": "15_to_50_feet_from_tracks",
+        "never_stop_on_tracks": true,
+        "ensure_full_vehicle_clears": true
+      }
+    },
+    "animal_crossing_sign_detected": {
+      "rule_id": "ANIMAL_001",
+      "priority": "medium",
+      "actions": [
+        "slow_down",
+        "proceed_with_caution"
+      ],
+      "description": "Reduce speed, watch for animals crossing road",
+      "conditions": [
+        "animal_crossing_zone",
+        "wildlife_may_appear_suddenly",
+        "increased_risk_dawn_dusk"
+      ],
+      "speed_requirements": {
+        "reduce_speed": true,
+        "be_prepared_to_stop": true
+      },
+      "distance_requirements": {
+        "scan_road_sides": true
+      }
+    },
+    "motorcycle_detected": {
+      "rule_id": "MOTO_001",
+      "priority": "high",
+      "actions": [
+        "maintain_distance",
+        "proceed_with_caution"
+      ],
+      "description": "Watch for motorcycles, check blind spots, give full lane width",
+      "conditions": [
+        "motorcycle_in_vicinity",
+        "motorcycles_harder_to_see",
+        "motorcycles_can_stop_faster",
+        "vulnerable_in_collision"
+      ],
+      "speed_requirements": {
+        "do_not_tailgate": true
+      },
+      "distance_requirements": {
+        "following_distance": "3_to_4_seconds",
+        "give_full_lane_width": true,
+        "check_blind_spots_carefully": true
+      }
+    },
+    "construction_zone_sign_detected": {
+      "rule_id": "ZONE_002",
+      "priority": "high",
+      "actions": [
+        "slow_down",
+        "proceed_with_caution",
+        "change_lane"
+      ],
+      "description": "Reduce speed, follow posted signs, watch for workers and equipment",
+      "conditions": [
+        "construction_zone_ahead",
+        "workers_present",
+        "lane_shifts_possible",
+        "reduced_speed_limit"
+      ],
+      "speed_requirements": {
+        "follow_reduced_speed_limit": true,
+        "doubled_fines_in_some_regions": true
+      },
+      "distance_requirements": {
+        "merge_early_if_lane_closed": true
+      }
+    },
+    "tunnel_sign_detected": {
+      "rule_id": "TUNNEL_001",
+      "priority": "medium",
+      "actions": [
+        "informational",
+        "maintain_distance",
+        "proceed_with_caution"
+      ],
+      "description": "Turn on headlights, maintain speed and lane, increase following distance",
+      "conditions": [
+        "tunnel_ahead",
+        "turn_on_headlights",
+        "maintain_speed_and_lane",
+        "no_stopping_except_emergency"
+      ],
+      "speed_requirements": {
+        "maintain_steady_speed": true,
+        "follow_posted_tunnel_speed": true
+      },
+      "distance_requirements": {
+        "following_distance": "4_seconds_minimum",
+        "do_not_change_lanes_unnecessarily": true
+      }
+    },
+    "bus_lane_detected": {
+      "rule_id": "BUS_001",
+      "priority": "medium",
+      "actions": [
+        "informational",
+        "keep_right"
+      ],
+      "description": "Do not drive in bus lanes during operational hours",
+      "conditions": [
+        "bus_lane_marking_present",
+        "operational_hours_active",
+        "buses_and_authorized_vehicles_only"
+      ],
+      "speed_requirements": {},
+      "distance_requirements": {}
+    },
+    "school_bus_flashing_lights_detected": {
+      "rule_id": "BUS_002",
+      "priority": "critical",
+      "actions": [
+        "stop",
+        "give_way"
+      ],
+      "description": "Stop when school bus has flashing red lights and stop arm extended",
+      "conditions": [
+        "school_bus_loading_unloading",
+        "red_lights_flashing",
+        "stop_arm_extended",
+        "children_crossing"
+      ],
+      "speed_requirements": {
+        "must_remain_stopped": true
+      },
+      "distance_requirements": {
+        "stop_distance": "20_to_25_feet_from_bus",
+        "remain_stopped_until_safe": true
+      }
+    },
+    "minimum_speed_sign_detected": {
+      "rule_id": "SPEED_002",
+      "priority": "medium",
+      "actions": [
+        "informational"
+      ],
+      "description": "Must maintain at least the minimum posted speed unless conditions unsafe",
+      "conditions": [
+        "minimum_speed_posted",
+        "typically_on_highways",
+        "maintain_traffic_flow"
+      ],
+      "speed_requirements": {
+        "minimum_speed": "as_posted",
+        "common_values": "40_to_60_kmh_on_highways"
+      },
+      "distance_requirements": {}
+    },
+    "no_parking_sign_detected": {
+      "rule_id": "PARK_001",
+      "priority": "medium",
+      "actions": [
+        "informational"
+      ],
+      "description": "No parking allowed in this zone",
+      "conditions": [
+        "no_parking_zone",
+        "stopping_may_be_allowed",
+        "check_for_time_restrictions"
+      ],
+      "speed_requirements": {},
+      "distance_requirements": {}
+    },
+    "no_stopping_sign_detected": {
+      "rule_id": "PARK_002",
+      "priority": "high",
+      "actions": [
+        "informational"
+      ],
+      "description": "No stopping or parking allowed at any time",
+      "conditions": [
+        "no_stopping_zone",
+        "no_parking_allowed",
+        "cannot_stop_even_briefly"
+      ],
+      "speed_requirements": {},
+      "distance_requirements": {}
+    },
+    "curve_ahead_sign_detected": {
+      "rule_id": "WARN_001",
+      "priority": "medium",
+      "actions": [
+        "slow_down",
+        "proceed_with_caution"
+      ],
+      "description": "Sharp curve ahead, reduce speed before entering curve",
+      "conditions": [
+        "sharp_curve_ahead",
+        "reduce_speed_before_curve",
+        "stay_in_lane"
+      ],
+      "speed_requirements": {
+        "advisory_speed": "often_posted",
+        "reduce_speed_appropriately": true
+      },
+      "distance_requirements": {
+        "slow_down_before_curve": "not_in_curve"
+      }
+    },
+    "steep_grade_sign_detected": {
+      "rule_id": "WARN_002",
+      "priority": "medium",
+      "actions": [
+        "slow_down",
+        "proceed_with_caution"
+      ],
+      "description": "Steep hill ahead, use lower gear, watch for heavy vehicles",
+      "conditions": [
+        "steep_grade_ahead",
+        "use_lower_gear_for_control",
+        "trucks_may_be_slow",
+        "downhill_brake_overheating_risk"
+      ],
+      "speed_requirements": {
+        "control_speed_with_gears": true,
+        "do_not_ride_brakes_downhill": true
+      },
+      "distance_requirements": {
+        "watch_for_runaway_truck_ramps": true
+      }
+    },
+    "slippery_road_sign_detected": {
+      "rule_id": "WARN_003",
+      "priority": "medium",
+      "actions": [
+        "slow_down",
+        "maintain_distance",
+        "proceed_with_caution"
+      ],
+      "description": "Road may be slippery when wet, reduce speed and increase following distance",
+      "conditions": [
+        "slippery_conditions_possible",
+        "wet_or_icy_surface",
+        "reduced_traction"
+      ],
+      "speed_requirements": {
+        "reduce_speed": true,
+        "gentle_inputs": true
+      },
+      "distance_requirements": {
+        "following_distance": "increased"
+      }
+    },
+    "merge_sign_detected": {
+      "rule_id": "MERGE_001",
+      "priority": "medium",
+      "actions": [
+        "proceed_with_caution",
+        "maintain_distance",
+        "change_lane"
+      ],
+      "description": "Traffic merging ahead, adjust speed and position to allow merging",
+      "conditions": [
+        "merging_traffic_ahead",
+        "be_courteous_allow_merging",
+        "zipper_merge_in_congestion"
+      ],
+      "speed_requirements": {
+        "adjust_speed_to_facilitate_merge": true
+      },
+      "distance_requirements": {
+        "leave_space_for_merging_vehicles": true
+      }
+    },
+    "speed_bump_detected": {
+      "rule_id": "CALM_001",
+      "priority": "medium",
+      "actions": [
+        "slow_down"
+      ],
+      "description": "Slow down significantly for speed bump or speed hump",
+      "conditions": [
+        "speed_bump_ahead",
+        "reduce_speed_to_avoid_damage",
+        "common_in_residential_areas"
+      ],
+      "speed_requirements": {
+        "reduce_to": "5_to_20_kmh",
+        "very_slow_speed_required": true
+      },
+      "distance_requirements": {}
+    },
+    "narrow_road_sign_detected": {
+      "rule_id": "WARN_004",
+      "priority": "medium",
+      "actions": [
+        "slow_down",
+        "proceed_with_caution"
+      ],
+      "description": "Road narrows ahead, reduce speed and prepare for reduced width",
+      "conditions": [
+        "road_narrows",
+        "may_need_to_yield",
+        "oncoming_traffic_closer"
+      ],
+      "speed_requirements": {
+        "reduce_speed": true,
+        "be_prepared_to_stop": true
+      },
+      "distance_requirements": {
+        "reduce_speed_before_narrow_section": true
+      }
+    },
+    "two_way_traffic_sign_detected": {
+      "rule_id": "WARN_005",
+      "priority": "medium",
+      "actions": [
+        "proceed_with_caution",
+        "keep_right"
+      ],
+      "description": "Divided highway ends, two-way traffic begins",
+      "conditions": [
+        "two_way_traffic_ahead",
+        "oncoming_traffic_begins",
+        "stay_in_proper_lane"
+      ],
+      "speed_requirements": {},
+      "distance_requirements": {
+        "keep_right": true
+      }
+    },
+    "priority_to_oncoming_sign_detected": {
+      "rule_id": "PRIORITY_001",
+      "priority": "high",
+      "actions": [
+        "yield",
+        "slow_down"
+      ],
+      "description": "Give priority to oncoming traffic on narrow sections",
+      "conditions": [
+        "narrow_section_ahead",
+        "oncoming_traffic_has_priority",
+        "wait_for_clear_path"
+      ],
+      "speed_requirements": {
+        "reduce_speed": true
+      },
+      "distance_requirements": {
+        "be_prepared_to_stop": true
+      }
+    }
+  },
+  "priority_levels": {
+    "critical": [
+      "EMG_001",
+      "SIGN_001",
+      "PED_001",
+      "LIGHT_001",
+      "SIGN_005",
+      "WEATHER_003",
+      "RAIL_001",
+      "BUS_002"
+    ],
+    "high": [
+      "RND_001",
+      "SIGN_002",
+      "ZONE_001",
+      "LIGHT_002",
+      "SPEED_001",
+      "SIGN_003",
+      "SIGN_004",
+      "CYC_001",
+      "WEATHER_001",
+      "WEATHER_002",
+      "MOTO_001",
+      "ZONE_002",
+      "PARK_002",
+      "PRIORITY_001"
+    ],
+    "medium": [
+      "LANE_001",
+      "SIGN_006",
+      "HV_001",
+      "ANIMAL_001",
+      "TUNNEL_001",
+      "BUS_001",
+      "SPEED_002",
+      "PARK_001",
+      "WARN_001",
+      "WARN_002",
+      "WARN_003",
+      "MERGE_001",
+      "CALM_001",
+      "WARN_004",
+      "WARN_005"
+    ],
+    "low": []
+  },
+  "action_types": [
+    "stop",
+    "yield",
+    "slow_down",
+    "give_way",
+    "change_lane",
+    "proceed_with_caution",
+    "maintain_distance",
+    "keep_right",
+    "keep_left",
+    "no_entry",
+    "informational"
+  ],
+  "detection_triggers": [
+    "emergency_vehicle_detected",
+    "roundabout_sign_detected",
+    "stop_sign_detected",
+    "yield_sign_detected",
+    "pedestrian_crossing_detected",
+    "school_zone_sign_detected",
+    "red_traffic_light_detected",
+    "yellow_traffic_light_detected",
+    "speed_limit_sign_detected",
+    "multi_lane_highway_detected",
+    "no_overtaking_sign_detected",
+    "one_way_sign_detected",
+    "do_not_enter_sign_detected",
+    "priority_road_sign_detected",
+    "cyclist_detected",
+    "heavy_vehicle_detected",
+    "fog_detected",
+    "rain_or_wet_road_detected",
+    "snow_or_ice_detected",
+    "railroad_crossing_detected",
+    "animal_crossing_sign_detected",
+    "motorcycle_detected",
+    "construction_zone_sign_detected",
+    "tunnel_sign_detected",
+    "bus_lane_detected",
+    "school_bus_flashing_lights_detected",
+    "minimum_speed_sign_detected",
+    "no_parking_sign_detected",
+    "no_stopping_sign_detected",
+    "curve_ahead_sign_detected",
+    "steep_grade_sign_detected",
+    "slippery_road_sign_detected",
+    "merge_sign_detected",
+    "speed_bump_detected",
+    "narrow_road_sign_detected",
+    "two_way_traffic_sign_detected",
+    "priority_to_oncoming_sign_detected"
+  ],
+  "category_index": {
+    "emergency_vehicles": [
+      "EMG_001"
+    ],
+    "roundabouts": [
+      "RND_001"
+    ],
+    "traffic_signs": [
+      "SIGN_001",
+      "SIGN_002",
+      "SIGN_003",
+      "SIGN_004",
+      "SIGN_005",
+      "SIGN_006"
+    ],
+    "pedestrians": [
+      "PED_001"
+    ],
+    "special_zones": [
+      "ZONE_001",
+      "ANIMAL_001",
+      "ZONE_002",
+      "TUNNEL_001"
+    ],
+    "traffic_signals": [
+      "LIGHT_001",
+      "LIGHT_002"
+    ],
+    "speed_management": [
+      "SPEED_001",
+      "SPEED_002"
+    ],
+    "lane_management": [
+      "LANE_001",
+      "MERGE_001"
+    ],
+    "vulnerable_road_users": [
+      "CYC_001",
+      "MOTO_001"
+    ],
+    "heavy_vehicles": [
+      "HV_001"
+    ],
+    "weather_conditions": [
+      "WEATHER_001",
+      "WEATHER_002",
+      "WEATHER_003"
+    ],
+    "rail_crossings": [
+      "RAIL_001"
+    ],
+    "special_lanes": [
+      "BUS_001"
+    ],
+    "special_vehicles": [
+      "BUS_002"
+    ],
+    "parking": [
+      "PARK_001",
+      "PARK_002"
+    ],
+    "warning_signs": [
+      "WARN_001",
+      "WARN_002",
+      "WARN_003",
+      "WARN_004",
+      "WARN_005"
+    ],
+    "traffic_calming": [
+      "CALM_001"
+    ],
+    "priority_rules": [
+      "PRIORITY_001"
+    ]
+  }
+}
