@@ -31,7 +31,7 @@ from utils.constants import (
     CAMERA_SOURCES, TRAFFIC_SIGN_CONFIG, FCW_CONFIG,
     LANE_DEPARTURE_CONFIG, PRIORITY_RULES_CONFIG,
     DRIVER_DISTRACTION_CONFIG, FRONT_CAMERA_CONFIG,
-    LLM_RISK_CONFIG,
+    LLM_RISK_CONFIG, DSF_CONFIG, PIP_CONFIG,
 )
 
 from processors.fcw_processor import ForwardCollisionProcessor
@@ -41,6 +41,8 @@ from processors.blindspot_processor import BlindSpotProcessor
 from processors.priority_rules_processor import PriorityRulesProcessor
 from processors.driver_distraction_processor import DriverDistractionProcessor
 from processors.overtake_processor import OvertakeProcessor
+from processors.dsf_processor import DrivingStyleFeedbackProcessor
+from processors.pip_processor import PedestrianIntentProcessor
 
 # LLM Risk Explanation module
 from LLMRiskExplanation import LLMRiskExplainer, RiskSnapshot
@@ -83,6 +85,8 @@ class NeuroDriveUI:
         self.lane_processor           = None
         self.priority_rules_processor = None
         self.driver_processor         = None
+        self.dsf_processor            = None   # Module 9: Driving Style Feedback
+        self.pip_processor            = None   # Module 11: Pedestrian Intent Prediction
 
         # ── Overtake Processor ────────────────────────────────────────────────
         self.overtake_processor = OvertakeProcessor()
@@ -127,6 +131,9 @@ class NeuroDriveUI:
 
         # ── Startup errors ────────────────────────────────────────────────────
         self._startup_errors = []
+
+        # ── PIP alert cooldown tracker ────────────────────────────────────────
+        self.displayed_pip_alerts: dict = {}  # ped_id -> last shown timestamp
 
         # ── Overtake state mirror (for UI feedback) ───────────────────────────
         self._last_overtake_state = OvertakeState.IDLE
@@ -438,6 +445,40 @@ class NeuroDriveUI:
                 "Driver Distraction Detection", True)
             print("✓ Driver Distraction (already running)")
 
+        # ── Module 9: Driving Style Feedback ─────────────────────────────────
+        dsf_on = cfg.get("Driving Style Feedback", True)
+        if dsf_on:
+            def _mk_dsf():
+                p = DrivingStyleFeedbackProcessor(
+                    config_path=DSF_CONFIG['config_path'],
+                    speed_kmh=DSF_CONFIG['speed_kmh'],
+                )
+                p.detection_enabled = True
+                p.start()
+                return p
+            self.dsf_processor = self._safe_start("Driving Style Feedback", _mk_dsf)
+            if self.dsf_processor:
+                print("✓ Driving Style Feedback started")
+        else:
+            print("— Driving Style Feedback disabled in config")
+
+        # ── Module 11: Pedestrian Intent Prediction ───────────────────────────
+        pip_on = cfg.get("Pedestrian Intent Prediction", True)
+        if pip_on:
+            def _mk_pip():
+                p = PedestrianIntentProcessor(
+                    model_path=PIP_CONFIG.get('model_path'),
+                    vehicle_speed_kmh=PIP_CONFIG['vehicle_speed_kmh'],
+                )
+                p.detection_enabled = True
+                p.start()
+                return p
+            self.pip_processor = self._safe_start("Pedestrian Intent Prediction", _mk_pip)
+            if self.pip_processor:
+                print("✓ Pedestrian Intent Prediction started (overlay mode)")
+        else:
+            print("— Pedestrian Intent Prediction disabled in config")
+
         # ── LLM Risk Explainer ────────────────────────────────────────────────
         llm_on = cfg.get("LLM-Based Risk Explanation", True)
         if llm_on:
@@ -554,6 +595,18 @@ class NeuroDriveUI:
             frame2 = self._drain_latest(self.lane_processor)
         elif segment == 'priority_rules' and self.priority_rules_processor:
             frame2 = self._drain_latest(self.priority_rules_processor)
+
+        # ── PIP overlay: push raw frame in, get annotated frame back ──────────
+        # Works on ALL front camera segments — not just one video
+        pip_on = self.config.get("Pedestrian Intent Prediction", True)
+        if pip_on and self.pip_processor and self.pip_processor.is_running:
+            if frame2 is not None:
+                self.pip_processor.push_frame(frame2)
+            # Returns latest annotated frame OR last cached one — never None after first result
+            pip_frame = self.pip_processor.get_annotated_frame()
+            if pip_frame is not None:
+                frame2 = pip_frame   # replace with annotated version
+
         if frame2 is not None:
             self.video_grid.update_feed(FEED_FRONT_CAMERA, frame2)
 
@@ -568,6 +621,10 @@ class NeuroDriveUI:
             explanation = self.llm_explainer.poll()
             if explanation:
                 self.alert_panel.add_llm_explanation(explanation, now)
+
+        # ── Update DSF bottom panel ───────────────────────────────────────────
+        if self.dsf_processor and self.alert_panel:
+            self.alert_panel.update_dsf(self.dsf_processor.panel_data)
 
         # ── Tick the overtake processor (timeout / expiry) ────────────────────
         new_ot_state = self.overtake_processor.tick()
@@ -635,6 +692,23 @@ class NeuroDriveUI:
             snap.gaze              = self.driver_processor.gaze
             if hasattr(self.driver_processor, 'yaw_status'):
                 snap.yaw_status = self.driver_processor.yaw_status
+
+        # ── Module 9: DSF — forward ALL module alert states ──────────────────
+        if self.dsf_processor and self.dsf_processor.is_running:
+            self.dsf_processor.update_alert_state({
+                "fcw_alert":          bool(snap.fcw_critical),
+                "lane_alert":         bool(snap.lane_warning),
+                "bsp_alert":          bool(snap.left_bsp or snap.right_bsp),
+                "sign_alert":         bool(snap.sign_class),
+                "priority_alert":     bool(snap.active_rules),
+                "drowsiness_alert":   bool(snap.driver_distracted),
+                "distraction_alert":  bool(snap.driver_distracted),
+                "pip_alert":          bool(self.pip_processor and
+                                           self.pip_processor.detection_status),            })
+
+        # ── Module 11: PIP ────────────────────────────────────────────────────
+        if self.pip_processor and self.pip_processor.is_running:
+            snap.pedestrian_alert = self.pip_processor.detection_status
 
         return snap
 
@@ -745,6 +819,26 @@ class NeuroDriveUI:
                     distracted=self.driver_processor.distracted,
                     alerts=self.driver_processor.alerts,
                 )
+
+        # ── PIP alerts → left alert panel (only high-intent, with cooldown) ────
+        pip_on = self.config.get("Pedestrian Intent Prediction", True)
+        if pip_on and self.pip_processor and self.pip_processor.is_running:
+            for alert_res in self.pip_processor.crossing_alerts:
+                intent = alert_res.get("intent_prob", 0.0)
+                # Only show in alert panel if intent >= 0.80 (very probable crossing)
+                if intent < 0.80:
+                    continue
+                ped_id = alert_res.get("id", "?")
+                dist   = alert_res.get("distance_m", 0)
+                # Per-pedestrian cooldown — same ped can't spam more than once per 5s
+                cooldown_key = f"pip_{ped_id}"
+                last_shown = self.displayed_pip_alerts.get(cooldown_key, 0)
+                if current_time - last_shown < 5.0:
+                    continue
+                self.displayed_pip_alerts[cooldown_key] = current_time
+                if self.alert_panel:
+                    msg = f"🚨 PEDESTRIAN crossing likely — intent {intent:.0%}, {dist:.1f}m ahead"
+                    self.alert_panel._append_line(msg, "critical")
 
     def _refresh_sign_history(self, current_time):
         if (self.traffic_sign_processor and
@@ -875,6 +969,10 @@ class NeuroDriveUI:
         for proc, key in pairs:
             if proc is not None:
                 proc.detection_enabled = cfg.get(key, True)
+        if self.dsf_processor is not None:
+            self.dsf_processor.detection_enabled = cfg.get("Driving Style Feedback", True)
+        if self.pip_processor is not None:
+            self.pip_processor.detection_enabled = cfg.get("Pedestrian Intent Prediction", True)
         print("[Settings] Applied live.")
 
     def show_settings(self):
@@ -918,10 +1016,86 @@ class NeuroDriveUI:
             self.left_bsp_processor, self.right_bsp_processor,
             self.traffic_sign_processor, self.fcw_processor,
             self.lane_processor, self.priority_rules_processor,
-            self.driver_processor,
+            self.driver_processor, self.dsf_processor,
         ]:
             if proc:
                 try:
                     proc.stop()
                 except Exception:
                     pass
+
+        if self.pip_processor:
+            try:
+                self.pip_processor.stop()
+            except Exception:
+                pass
+
+    def build_run_summary(self) -> dict:
+        """Collect summaries and stats from active processors to build a
+        combined run summary dict suitable for SummaryWindow.
+        """
+        summary = {}
+
+        # DSF summary
+        try:
+            dsf = self.dsf_processor.get_summary() if self.dsf_processor else {}
+        except Exception:
+            dsf = {}
+        # Also attempt to include the raw DSF text summary (latest file) for full details
+        try:
+            summaries_dir = Path('summaries')
+            if summaries_dir.exists():
+                files = sorted(summaries_dir.glob('summary_*.txt'))
+                if files:
+                    latest = files[-1]
+                    with open(latest, 'r') as fh:
+                        dsf_raw = fh.read()
+                    dsf = dict(dsf) if isinstance(dsf, dict) else {}
+                    dsf['raw_text'] = dsf_raw
+        except Exception:
+            pass
+        summary['dsf'] = dsf
+
+        # PIP stats
+        pip = {}
+        try:
+            if self.pip_processor:
+                pip['frames_processed'] = int(self.pip_processor.statistics.get('frames_processed', 0)) if getattr(self.pip_processor, 'statistics', None) else 0
+                # Counts by intent
+                high = len(self.pip_processor.crossing_alerts) if getattr(self.pip_processor, 'crossing_alerts', None) else 0
+                pip['high_intent_count'] = high
+                # For low/moderate estimation we scan last statistics if available
+                hist = [0, 0, 0]
+                # attempt to build histogram from last known system stats
+                stats = getattr(self.pip_processor, 'statistics', {}) or {}
+                intent_hist = stats.get('intent_histogram') or stats.get('intent_hist')
+                if intent_hist:
+                    pip['intent_hist'] = intent_hist
+                    hist = intent_hist
+                # Add more stats if available
+                pip['avg_inference_time_ms'] = stats.get('avg_inference_time_ms', 0)
+                pip['fps'] = stats.get('fps', 0)
+                pip['alert_stats'] = stats.get('alert_stats', {})
+                # optional timeseries of alerts (if system collected it)
+                pip['alert_timeseries'] = stats.get('alert_timeseries')
+                pip['low_intent_count'] = hist[0] if len(hist) >= 1 else 0
+                pip['moderate_intent_count'] = hist[1] if len(hist) >= 2 else 0
+                pip['high_intent_count'] = hist[2] if len(hist) >= 3 else high
+                # Grab last annotated frame if available
+                try:
+                    annotated = self.pip_processor.get_annotated_frame()
+                    pip['annotated_image'] = annotated
+                except Exception:
+                    pip['annotated_image'] = None
+        except Exception:
+            pip = {}
+        summary['pip'] = pip
+
+        # Generic metadata
+        summary['duration_s'] = dsf.get('duration_seconds', 0) if isinstance(dsf, dict) else 0
+        summary['frames'] = pip.get('frames_processed', 0)
+
+        # Provide convenience top-level aliases
+        summary['annotated_image'] = pip.get('annotated_image')
+
+        return summary

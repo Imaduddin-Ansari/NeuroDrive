@@ -1,0 +1,13 @@
+{
+    "Lane Departure Warning": true,
+    "Blind Spot Monitoring": true,
+    "Traffic Sign Detection": true,
+    "Driver Distraction Detection": true,
+    "Overtake Assistance": true,
+    "Weather/Visibility Adaptation": true,
+    "Priority-Based Rules Alert": true,
+    "LLM-Based Risk Explanation": true,
+    "Driving Style Feedback": true,
+    "Forward Collision Warning": true,
+    "Pedestrian Intent Prediction": true
+}

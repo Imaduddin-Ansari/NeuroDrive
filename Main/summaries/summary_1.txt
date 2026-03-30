@@ -1,0 +1,75 @@
+==================================================================
+==================================================================
+|                NeuroDrive — Journey Summary #1                 |
+==================================================================
+|           Module 9: Driving Style Feedback  (FR9.5)            |
+==================================================================
+
+SESSION INFORMATION
+------------------------------------------------------------------
+  Run Number:                 #1
+  Journey Start:              2026-03-30T04:52:36.393908+00:00
+  Journey End:                2026-03-30T04:53:55.800935+00:00
+  Duration:                   1.3 minutes
+  Distance Covered:           1.320 km
+
+OVERALL DRIVING SCORE
+------------------------------------------------------------------
+  Final Score:                89 / 100  ✅ Safe
+  Trend:                      → Stable
+  Risk Weight Applied:        1.00x
+
+DRIVING BEHAVIOUR EVENTS
+------------------------------------------------------------------
+  Harsh Accelerations:        10
+  Harsh Brakings:             7
+  Aggressive Steers:          5
+  Total Harsh Events:         22
+
+  Top 5 Worst Events:
+    1. Aggressive Steer       +22.00 deg/s  @ 2026-03-30 04:52:36
+    2. Aggressive Steer       +22.00 deg/s  @ 2026-03-30 04:52:52
+    3. Aggressive Steer       +22.00 deg/s  @ 2026-03-30 04:53:09
+    4. Aggressive Steer       +22.00 deg/s  @ 2026-03-30 04:53:25
+    5. Aggressive Steer       +22.00 deg/s  @ 2026-03-30 04:53:41
+
+MODULE ALERT SUMMARY
+------------------------------------------------------------------
+  Forward Collision Warning:  No  ✓
+  Lane Departure Warning:     No  ✓
+  Blind Spot Monitoring:      No  ✓
+  Traffic Sign Detection:     No  ✓
+  Priority Rules Alert:       YES ⚠
+  Driver Distraction:         No  ✓
+  Pedestrian Intent Alert:    No  ✓
+
+PERSONALISED RECOMMENDATIONS
+------------------------------------------------------------------
+  1. Good session with a score of 89/100. A few rough moments 
+     held you back — focus on the specific areas below. 
+
+  2. You triggered 10 harsh accelerations this session. Ease 
+     into the throttle gradually — rapid acceleration wastes 
+     fuel and increases wear on the drivetrain. 
+
+  3. 7 harsh braking events recorded — this is the highest-risk 
+     behaviour in your session. Increase your following 
+     distance so you can brake gently and progressively. 
+
+  4. 5 aggressive steering input(s) detected. Reduce speed 
+     before corners and apply smooth, progressive steering 
+     inputs — this improves tyre life and passenger comfort. 
+
+  5. Priority rule alerts were active (emergency vehicles or 
+     junction rules). Always yield to emergency vehicles 
+     immediately and follow right-of-way rules at 
+     intersections. 
+
+SCORE TREND (sampled)
+------------------------------------------------------------------
+  [█████████░] 98  [███████░░░] 71  [████████░░] 89  [█████████░] 
+
+══════════════════════════════════════════════════════════════════
+  Generated: 2026-03-30 09:53:55
+  NeuroDrive ADAS — Module 9 Driving Style Feedback
+══════════════════════════════════════════════════════════════════

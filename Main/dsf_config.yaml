@@ -1,0 +1,44 @@
+# NeuroDrive — Module 9: Driving Style Feedback Configuration
+# All values here override the built-in defaults.
+# Remove or comment out any key to use the default value.
+
+sensor:
+  sample_rate_hz: 10          # Hz  [1, 100]
+  gap_threshold_s: 0.5        # seconds before gap-fill kicks in
+  max_accel_ms2: 9.8          # physical plausibility ceiling
+  max_steer_degs: 720.0
+  calibration:
+    accel_scale: 1.0          # multiply raw accel before threshold comparison
+    decel_scale: 1.0
+    steer_scale: 1.0
+
+thresholds:
+  harsh_accel_ms2: 2.5        # FR9.1: harsh acceleration threshold
+  harsh_brake_ms2: -3.0       # FR9.1: harsh braking threshold
+  harsh_steer_degs: 15.0      # FR9.1: aggressive steering threshold
+  dedup_window_s: 1.0         # same-type events within 1s count as one
+
+scoring:
+  window_s: 10                # rolling window length in seconds
+  ewma_decay: 0.95            # EWMA decay factor (higher = more memory)
+  tier_aggressive_max: 40     # FR9.2: Aggressive  [0, 40]
+  tier_moderate_max: 70       # FR9.2: Moderate   [41, 70]  Safe [71, 100]
+  penalty_accel: 10           # score penalty per harsh acceleration event
+  penalty_brake: 12           # score penalty per harsh braking event
+  penalty_steer: 8            # score penalty per aggressive steering event
+
+risk:
+  impairment_weight: 1.25     # FR9.4: 25% penalty increase when impaired
+
+feedback:
+  periodic_interval_s: 900    # FR9.3: 15 minutes = 900 seconds (range: 60–99999)
+  output_dir: "dsf_output"    # directory for JSON reports
+  history_file: "journey_history.jsonl"
+  rolling_window: 7           # number of past journeys for trend analysis
+  trend_threshold: 10         # score delta to flag improving/regressing
+
+recommendations:
+  harsh_accel: "Ease off the accelerator — smooth acceleration saves fuel and reduces wear."
+  harsh_brake: "Increase following distance to allow gentler, earlier braking."
+  aggressive_steer: "Slow down before corners and steer smoothly through the turn."
+  default: "Maintain a steady speed and anticipate traffic flow ahead."

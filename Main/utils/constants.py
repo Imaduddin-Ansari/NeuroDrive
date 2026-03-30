@@ -88,6 +88,9 @@ CAMERA_SOURCES = {
     # Driver camera — 0 = webcam; set to a file path if using a recording
     'driver_camera': 0,
 
+    # Pedestrian Intent Prediction — uses dedicated pedestrian video
+    'pip': _rel("PedestrianIntentPrediction", "samplevideos", "test4.mp4"),
+
     # Legacy alias
     'front_videos': [
         _rel("TrafficSignDetection", "Videos", "selected1.mp4"),
@@ -190,10 +193,11 @@ ALERT_SETTINGS = {
 
 # ── Front-camera cycling durations (seconds per segment) ─────────────────────
 FRONT_CAMERA_CONFIG = {
-    'traffic_sign_duration': 45.0,   # effectively unlimited — full video
+    'traffic_sign_duration': 45.0,
     'fcw_duration':          30.0,
     'lane_duration':         30.0,
-    'priority_duration':     3600.0,
+    'priority_duration':     30.0,
+    # pip is NOT in the cycle — it overlays on ALL segments
     'cycle_order': ['traffic_sign', 'fcw', 'lane', 'priority_rules'],
 }
 
@@ -201,4 +205,18 @@ FRONT_CAMERA_CONFIG = {
 ALTERNATING_CONFIG = {
     'fcw_lane_switch_interval':   30.0,
     'blindspot_switch_interval':  30.0,
+}
+
+# ── Driving Style Feedback Configuration ─────────────────────────────────────
+DSF_CONFIG = {
+    'config_path':    str(_MAIN_DIR / 'dsf_config.yaml'),
+    'speed_kmh':      60.0,
+    # Set to a video file path for demo; None = uses synthetic sensor data only
+    'video_source':   None,
+}
+
+# ── Pedestrian Intent Prediction Configuration ────────────────────────────────
+PIP_CONFIG = {
+    'model_path':        str(_ROOT / "PedestrianIntentPrediction" / "PIP" / "models" / "intent_model.pth"),
+    'vehicle_speed_kmh': 30.0,
 }

@@ -10,6 +10,8 @@ from .blindspot_processor import BlindSpotProcessor
 from .lane_departure_processor import LaneDepartureProcessor
 from .priority_rules_processor import PriorityRulesProcessor
 from .driver_distraction_processor import DriverDistractionProcessor
+from .dsf_processor import DrivingStyleFeedbackProcessor
+from .pip_processor import PedestrianIntentProcessor
 
 __all__ = [
     'BaseProcessor',
@@ -19,4 +21,6 @@ __all__ = [
     'LaneDepartureProcessor',
     'PriorityRulesProcessor',
     'DriverDistractionProcessor',
+    'DrivingStyleFeedbackProcessor',
+    'PedestrianIntentProcessor',
 ]
